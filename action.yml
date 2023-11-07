@@ -1,3 +1,6 @@
+# Copyright 2023 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 name: 'Update the image digest'
 description: 'Update the image digest when have a mutating tag'
 
