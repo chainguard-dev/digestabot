@@ -1,0 +1,16 @@
+# Copyright 2023 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+version: 2
+updates:
+
+  # workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      all:
+        patterns:
+          - "minor"
+          - "patch"

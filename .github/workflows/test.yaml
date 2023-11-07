@@ -1,0 +1,33 @@
+# Copyright 2023 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - 'main'
+
+jobs:
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
+
+      - name: Run Digestabot
+        uses: ./
+        with:
+          create-pr: false
+
+      - name: Check changes
+        run: |
+          if [[ $(git diff --stat) == '' ]]; then
+            echo 'should exist changes'
+            exit 1
+          else
+            exit 0
+          fi
+        shell: bash
