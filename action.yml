@@ -97,11 +97,13 @@ runs:
 
     - name: Check workspace
       id: create_pr_update
+      env:
+        CREATE_PR: ${{ inputs.create_pr }}
       shell: bash
       run: |
         git diff --stat
         echo "create_pr_update=false" >> $GITHUB_OUTPUT
-        if [[ $(git diff --stat) != '' ]] && [[ ${{ inputs.create-pr }} == 'true' ]]; then
+        if [[ $(git diff --stat) != '' ]] && [[ "${CREATE_PR}" == 'true' ]]; then
           echo "create_pr_update=true" >> $GITHUB_OUTPUT
         fi
 
