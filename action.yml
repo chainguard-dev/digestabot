@@ -98,7 +98,7 @@ runs:
     - name: Check workspace
       id: create_pr_update
       env:
-        CREATE_PR: ${{ inputs.create_pr }}
+        CREATE_PR: ${{ inputs.create-pr }}
       shell: bash
       run: |
         git diff --stat
@@ -109,6 +109,7 @@ runs:
 
     # Configure signed commits
     - uses: chainguard-dev/actions/setup-gitsign@main
+      if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' }}
 
     - name: Create Pull Request
       uses: peter-evans/create-pull-request@153407881ec5c347639a548ade7d8ad1d6740e38 # v5.0.2
