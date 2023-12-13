@@ -16,7 +16,7 @@ This can be used to keep tags up-to-date whilst maintaining a reproducible build
 Basic usage:
 
 ```yaml
-    - uses: chainguard-dev/digestabot@v1.0.1
+    - uses: chainguard-dev/digestabot@v1.0.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -44,7 +44,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: chainguard-dev/digestabot@v1.0.1
+    - uses: chainguard-dev/digestabot@v1.0.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         signoff: true # optional
