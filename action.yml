@@ -16,12 +16,12 @@ inputs:
     description: >
       The author name and email address in the format `Display Name <email@address.com>`.
       Defaults to the user who triggered the workflow run.
-    default: '${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>'
+    default: '${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>'
   committer:
     description: >
       The committer name and email address in the format `Display Name <email@address.com>`.
       Defaults to the GitHub Actions bot user.
-    default: 'GitHub <noreply@github.com>'
+    default: 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
   labels-for-pr:
     description: 'A comma or newline separated list of labels to be used in the pull request.'
     default: automated pr, kind/cleanup, release-note-none

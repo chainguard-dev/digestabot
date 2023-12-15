@@ -23,6 +23,12 @@ Basic usage:
 
 ## Scenarios
 
+Also you will need to enable the setting to allow GitHub Actions to create Pull Requests with you are not using a PAT Token
+
+```
+settings -> actions -> Allow GitHub Actions to create and approve pull requests
+```
+
 ```yaml
 name: Image digest update
 
@@ -48,8 +54,8 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         signoff: true # optional
-        author: update-bot # optional
-        committer: update-bot@example.com # optional
+        author: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com> # optional
+        committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> # optional
         labels-for-pr: automated pr, kind/cleanup, release-note-none # optional
         branch-for-pr: update-digests # optional
         title-for-pr: Update images digests # optional
