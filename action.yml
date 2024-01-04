@@ -72,6 +72,7 @@ runs:
                   echo "Skipping local registry image ${images2[i]}"
                   continue
                 fi
+                images2[i]=${images2[i]#\'}
                 echo "Processing ${images2[i]} in file $file"
 
                 updated_digest=
@@ -79,7 +80,7 @@ runs:
                 if [ $? -eq 0 ]; then
                     updated_digest=$(cat digest.log)
                 else
-                    ERRMSG="Failed to retrive digest info for ${images2[i]}"
+                    ERRMSG="Failed to retrieve digest info for ${images2[i]}"
                     echo "${ERRMSG}"
                     echo "${ERRMSG}" >> "$GITHUB_STEP_SUMMARY"
                     cat logerror.txt >> "$GITHUB_STEP_SUMMARY"
