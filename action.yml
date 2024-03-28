@@ -88,6 +88,7 @@ runs:
                 rm -f logerror.txt
                 rm -f digest.log
 
+                digests2[i]=${digests2[i]#\'}
                 if [ "$updated_digest" != "${digests2[i]}" ] && [ -n "$updated_digest" ]; then
                   echo "Digest ${digests2[i]} for image ${images2[i]} is different, new digest is $updated_digest, updating..."
                   sed -i -e "s/${digests2[i]}/$updated_digest/g" "$file"

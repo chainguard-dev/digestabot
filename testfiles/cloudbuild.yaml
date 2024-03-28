@@ -1,0 +1,12 @@
+source:
+  repoSource:
+    repoName: testrepo
+    branchName: main
+steps:
+
+  # Build
+  - id: update-node
+    name: 'cgr.dev/chainguard/node-lts:latest@sha256:00d83d15ae5777d64fa2552989f893355e7f91341396f84769db3d84902441e1'
+
+  - id: update-bash
+    name: 'cgr.dev/chainguard/bash:latest@sha256:099e4b9adb13a94e6f25d6bb9bfe69fd5ba734a615e62bb0e1efba6650c6b23d'
