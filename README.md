@@ -53,6 +53,7 @@ jobs:
         labels-for-pr: automated pr, kind/cleanup, release-note-none # optional
         branch-for-pr: update-digests # optional
         title-for-pr: Update images digests # optional
+        description-for-pr: Update images digests # optional
         commit-message: Update images digests # optional
 ```
 

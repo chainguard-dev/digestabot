@@ -31,6 +31,14 @@ inputs:
   title-for-pr:
     description: 'The title of the pull request.'
     default: 'Update images digests'
+  description-for-pr:
+    description: 'The description of the pull request.'
+    default: |
+      Update images digests
+
+      ```release-note
+      NONE
+      ```
   commit-message:
     description: 'The message to use when committing changes.'
     default: 'Update images digests'
@@ -120,12 +128,7 @@ runs:
         token: ${{ inputs.token }}
         commit-message: ${{ inputs.commit-message }}
         title: ${{ inputs.title-for-pr }}
-        body: |
-          Update images digests
-
-          ```release-note
-          NONE
-          ```
+        body: ${{ inputs.description-for-pr }}
         labels: ${{ inputs.labels-for-pr }}
         branch: ${{ inputs.branch-for-pr }}
         signoff: ${{ inputs.signoff }}
