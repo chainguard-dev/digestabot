@@ -23,7 +23,7 @@ Basic usage:
 
 ## Scenarios
 
-Also you will need to enable the setting to allow GitHub Actions to create Pull Requests with you are not using a PAT Token
+Also you will need to enable the setting to allow GitHub Actions to create Pull Requests if you are not using a PAT Token
 
 ```
 settings -> actions -> Allow GitHub Actions to create and approve pull requests
