@@ -5,6 +5,10 @@ name: 'Update the image digest'
 description: 'Update the image digest when have a mutating tag'
 
 inputs:
+  working-dir:
+    description: Working directory to run the digestabot, to run in a specific path, if not set will run from the root
+    required: false
+    default: .
   token:
     description: 'GITHUB_TOKEN or a `repo` scoped Personal Access Token (PAT)'
     required: true
@@ -103,7 +107,7 @@ runs:
                 fi
               done
           fi
-        done < <(find "$(pwd)" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh" \) -print0)
+        done < <(find "${{ inputs.working-dir }}" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh" \) -print0)
 
     - name: Check workspace
       id: create_pr_update
