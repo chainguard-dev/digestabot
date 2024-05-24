@@ -31,3 +31,34 @@ jobs:
             exit 0
           fi
         shell: bash
+
+  test-working-dir:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+
+      - name: Run Digestabot
+        uses: ./
+        with:
+          create-pr: false
+          working-dir: './testfiles/test-dir'
+
+      - name: Check changes
+        shell: bash
+        run: |
+          file_to_check='testfiles/test-dir/k8s-job-2.yaml'
+          modified_files=$(git diff --name-only && git diff --cached --name-only)
+
+          # Remove any duplicate entries from the list of modified files
+          modified_files=$(echo "$modified_files" | sort | uniq)
+
+          # Check if only the specified file is in the list of modified files
+          if [ "$modified_files" == "$file_to_check" ]; then
+              echo "Only $file_to_check has been modified"
+              exit 0
+          else
+              echo "Other files have been modified or there are no changes"
+              exit 1
+          fi

@@ -1,8 +1,8 @@
-# Copyright 2023 Chainguard, Inc.
+# Copyright 2024 Chainguard, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 apiVersion: batch/v1
-kind: Job
+kind: Job2
 metadata:
   namespace: test
   name: test
