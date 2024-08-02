@@ -122,7 +122,7 @@ runs:
         fi
 
     # Configure signed commits
-    - uses: chainguard-dev/actions/setup-gitsign@main
+    - uses: chainguard-dev/actions/setup-gitsign@57cb0b7560d9b9b081c15ac5ef689f73f4dda03e # main branch as of 2024-08-02
       if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' }}
 
     - name: Create Pull Request
