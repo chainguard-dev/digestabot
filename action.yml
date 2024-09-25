@@ -139,9 +139,13 @@ runs:
           ${{ inputs.description-for-pr }}
 
           ## Changes
+          <details>
+
           ```diff
           ${{ steps.create_pr_update.outputs.diff }}
           ```
+
+          </details>
         labels: ${{ inputs.labels-for-pr }}
         branch: ${{ inputs.branch-for-pr }}
         signoff: ${{ inputs.signoff }}
