@@ -49,6 +49,9 @@ inputs:
   create-pr:
     description: 'Create a PR or just keep the changes locally.'
     default: true
+  use-gitsign:
+    description: 'Use gitsign to sign commits.'
+    default: 'true'
 
 outputs:
   pull_request_number:
@@ -123,9 +126,9 @@ runs:
           echo "EOF" >> "${GITHUB_OUTPUT}"
         fi
 
-    # Configure signed commits
+    # Configure gitsign for signed commits
     - uses: chainguard-dev/actions/setup-gitsign@57cb0b7560d9b9b081c15ac5ef689f73f4dda03e # main branch as of 2024-08-02
-      if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' }}
+      if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' && inputs.use-gitsign == 'true' }}
 
     - name: Create Pull Request
       uses: peter-evans/create-pull-request@5e914681df9dc83aa4e4905692ca88beb2f9e91f # v7.0.5
@@ -151,4 +154,5 @@ runs:
         signoff: ${{ inputs.signoff }}
         committer: ${{ inputs.committer }}
         author: ${{ inputs.author }}
+        sign-commits: ${{ inputs.use-gitsign != 'true' }} # Sign commits with github if gitsign is not configured
         delete-branch: true
