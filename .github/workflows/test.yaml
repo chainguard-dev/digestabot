@@ -31,6 +31,13 @@ jobs:
             exit 0
           fi
         shell: bash
+      - name: Check for makefile change with blank spaces/tabs
+        shell: bash
+        run: |
+          if git diff --quiet HEAD -- testfiles/Makefile; then
+              echo "testfiles/Makefile has not changed."
+              exit 1
+          fi
 
   test-working-dir:
     runs-on: ubuntu-latest
