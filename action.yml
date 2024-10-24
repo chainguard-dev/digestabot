@@ -72,14 +72,14 @@ runs:
             echo "Skipping testdata ${file}"
             continue
           fi
-          
+
           # Extract all image references and their digests
           mapfile -t image_lines < <(grep -i -E '[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*@sha256:[a-z0-9]+' "$file" || true)
-          
+
           for line in "${image_lines[@]}"; do
-            image=$(echo "$line" | cut -d @ -f1 | rev | cut -d = -f1 | cut -d ' ' -f1 | cut -d '"' -f1 | rev | sed -e "s/^docker:\/\///")
-            digest=$(echo "$line" | cut -d @ -f2 | cut -d ' ' -f1 | cut -d '"' -f1)
-            
+            image=$(echo "$line" | cut -d @ -f1 | rev | cut -d = -f1 | cut -d ' ' -f1 | cut -d '"' -f1 | rev | sed -e "s/^docker:\/\///" | tr -d '' | tr -d '\t')
+            digest=$(echo "$line"| cut -d @ -f2 | cut -d ' ' -f1 | cut -d '"' -f1 | tr -d '' | tr -d '\t')
+
             if [[ "$image" != *":"* ]]; then
               echo "Image $image in file $file does not have a tag, ignoring..."
               continue
@@ -88,9 +88,9 @@ runs:
               echo "Skipping local registry image $image"
               continue
             fi
-            
+
             echo "Processing $image in file $file"
-            
+
             updated_digest=
             crane digest "$image" > digest.log 2> logerror.txt
             if [ $? -eq 0 ]; then
@@ -103,7 +103,7 @@ runs:
             fi
             rm -f logerror.txt
             rm -f digest.log
-            
+
             if [ "$updated_digest" != "$digest" ] && [ -n "$updated_digest" ]; then
               echo "Digest $digest for image $image is different, new digest is $updated_digest, updating..."
               sed -i -e "s|$image@$digest|$image@$updated_digest|g" "$file"
