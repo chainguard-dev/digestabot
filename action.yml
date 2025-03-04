@@ -57,6 +57,25 @@ outputs:
   pull_request_number:
     description: "Pull Request Number"
     value: ${{ steps.pull_request.outputs.pull-request-number }}
+  json:
+    description: |
+      The changes made by this action, in json format.
+
+      The output follows this structure:
+
+      ```
+      {
+        "updates": [
+          {
+            "file": ".ko.yaml",
+            "image": "cgr.dev/chainguard/kubectl:latest-dev",
+            "digest": "sha256:d5f340d044438351413d6cb110f6f8a2abc45a7149aa53e6ade719f069fc3b0a",
+            "updated_digest": "sha256:cd90036b16413eed13818500ae837e6e7710a59c74144c32e1e90b0e59d22efc"
+          }
+        ]
+      }
+      ```
+    value: ${{ steps.update_files.outputs.json }}
 
 runs:
   using: "composite"
@@ -64,9 +83,11 @@ runs:
     - uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
 
     - shell: bash
+      id: update_files
       run: |
         # disable the errexit github enable that by default
         set +o errexit
+        json='{}'
         while IFS= read -r -d '' file; do
           if [[ "$file" == *testdata* ]]; then
             echo "Skipping testdata ${file}"
@@ -107,9 +128,17 @@ runs:
             if [ "$updated_digest" != "$digest" ] && [ -n "$updated_digest" ]; then
               echo "Digest $digest for image $image is different, new digest is $updated_digest, updating..."
               sed -i -e "s|$image@$digest|$image@$updated_digest|g" "$file"
+              json=$(jq -c \
+                --arg file "${file}" \
+                --arg image "${image}" \
+                --arg digest "${digest}" \
+                --arg updated_digest "${updated_digest}" \
+                '.updates += [{file: $file, image: $image, digest: $digest, updated_digest: $updated_digest}]' <<<"${json}")
             fi
           done
         done < <(find "${{ inputs.working-dir }}" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh" \) -print0)
+
+        echo "json=${json}" >> "${GITHUB_OUTPUT}"
 
     - name: Check workspace
       id: create_pr_update
