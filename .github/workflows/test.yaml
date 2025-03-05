@@ -19,6 +19,7 @@ jobs:
 
       - name: Run Digestabot
         uses: ./
+        id: digestabot
         with:
           create-pr: false
 
@@ -31,6 +32,21 @@ jobs:
             exit 0
           fi
         shell: bash
+
+      - name: Check json output
+        shell: bash
+        run: |
+          checks=(
+            '.updates[] | .file and .file != ""'
+            '.updates[] | .image and .image != ""'
+            '.updates[].digest | startswith("sha256:")'
+            '.updates[].updated_digest | startswith("sha256:")'
+            '.updates[] | .digest != .updated_digest'
+          )
+          for check in "${checks[@]}"; do
+            jq -e "${check}" <<<'${{ steps.digestabot.outputs.json }}'
+          done
+
       - name: Check for makefile change with blank spaces/tabs
         shell: bash
         run: |
