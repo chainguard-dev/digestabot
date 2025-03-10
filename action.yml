@@ -109,7 +109,7 @@ runs:
               sed -i -e "s|$image@$digest|$image@$updated_digest|g" "$file"
             fi
           done
-        done < <(find "${{ inputs.working-dir }}" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh" \) -print0)
+        done < <(find "${{ inputs.working-dir }}" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh"  -o -name "*.tf" -o -name "*.tfvars" \) -print0)
 
     - name: Check workspace
       id: create_pr_update
