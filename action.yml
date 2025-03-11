@@ -136,7 +136,7 @@ runs:
                 '.updates += [{file: $file, image: $image, digest: $digest, updated_digest: $updated_digest}]' <<<"${json}")
             fi
           done
-        done < <(find "${{ inputs.working-dir }}" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh" \) -print0)
+        done < <(find "${{ inputs.working-dir }}" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh"  -o -name "*.tf" -o -name "*.tfvars" \) -print0)
 
         echo "json=${json}" >> "${GITHUB_OUTPUT}"
 
