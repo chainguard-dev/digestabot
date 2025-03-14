@@ -63,6 +63,29 @@ jobs:
         commit-message: Update images digests # optional
 ```
 
+The `json` output describes the updates that `digestabot` has made and makes it
+possible to extend the functionality of the action and act on the updates in
+subsequent steps.
+
+The schema of the output is described in [`action.yml`](action.yml).
+
+```yaml
+    # Run digestabot
+    - uses: chainguard-dev/digestabot@v1
+      id: digestabot
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    # Iterate over the updates in the `json` output
+    - shell: bash
+      run: |
+        while read -r update; do
+          updated_image=$(jq -r '.image + "@" + .updated_digest' <<<"${update}")
+
+          echo "Do something with ${updated_image} here."
+        done < <(jq -c '.updates // [] | .[]' <<<'${{ steps.digestabot.outputs.json }}')
+```
+
 ## File examples
 
 Here are some examples of files that digestabot can update:
