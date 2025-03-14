@@ -86,50 +86,6 @@ The schema of the output is described in [`action.yml`](action.yml).
         done < <(jq -c '.updates // [] | .[]' <<<'${{ steps.digestabot.outputs.json }}')
 ```
 
-You can also conditionally update images based on some criteria by reverting the
-changes made by `digestabot` and applying them yourself.
-
-```yaml
-    # Run digestabot to discover images to update. Don't create the PR.
-    - uses: chainguard-dev/digestabot@v1
-      id: digestabot
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        create-pr: false
-
-    # Revert the changes made by digestabot
-    - run: |
-        git reset --hard && git clean -fd
-
-    # Iterate over the updates in the `json` output. Make the change if the image
-    # is in cgr.dev.
-    - shell: bash
-      run: |
-        while read -r update; do
-          from_image=$(jq -r '.image + "@" + .digest' <<<"${update}")
-          to_image=$(jq -r '.image + "@" + .updated_digest' <<<"${update}")
-          file=$(jq -r '.file' <<<"${update}")
-
-          if [[ "${to_image}" =~ ^cgr.dev/.+$ ]]; then
-            sed -i -e "s|$from_image|$to_image|g" "$file"
-          fi
-        done < <(jq -c '.updates // [] | .[]' <<<'${{ steps.digestabot.outputs.json }}')
-
-    # Check for any changes
-    - id: create_pr_update
-      shell: bash
-      run: |
-        echo "create_pr_update=false" >> $GITHUB_OUTPUT
-        if [[ $(git diff --stat) != '' ]]; then
-          echo "create_pr_update=true" >> $GITHUB_OUTPUT
-        fi
-
-    # Create the PR yourself
-    - uses: peter-evans/create-pull-request@v7
-      if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' }}
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-```
 ## File examples
 
 Here are some examples of files that digestabot can update:
