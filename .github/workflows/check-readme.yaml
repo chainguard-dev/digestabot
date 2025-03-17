@@ -1,0 +1,49 @@
+name: Check README.md Updates
+
+on:
+  pull_request:
+    paths:
+      - 'action.yml'
+      - 'README.md'
+      - '.github/workflows/check-readme.yaml'
+
+permissions: {}
+
+jobs:
+  check-readme:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Create temporary README
+        run: |
+          cp README.md README.md.original
+
+      - name: Update temporary README with current inputs/outputs
+        shell: bash
+        run: |
+          ./hack/update-inputs.sh
+
+      - name: Check for differences
+        id: diff
+        run: |
+          if diff -q README.md README.md.original &>/dev/null; then
+            echo "No differences found. README.md is up-to-date."
+            echo "up_to_date=true" >> $GITHUB_OUTPUT
+          else
+            echo "Differences found. README.md needs to be updated."
+            diff -u README.md.original README.md || true
+            echo "up_to_date=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fail if README.md is not updated
+        if: steps.diff.outputs.up_to_date == 'false'
+        run: |
+          echo "::error::README.md needs to be updated to reflect the current inputs/outputs in action.yml"
+          echo "Please run the ./hack/update-inputs.sh script and commit the changes."
+          exit 1
