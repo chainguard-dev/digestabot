@@ -21,6 +21,17 @@ Basic usage:
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+### Authentication
+When accessing images in a private Chainguard registry, you will need to create an assumable identity with the `viewer` role, and add a step to set up the `chainctl` prior to running digestabot.
+
+Authentication example:
+
+```yaml
+    - uses: chainguard-dev/setup-chainctl@main
+        with:
+          identity: ${{ secrets.CHAINCTL_IDENTITY }}
+```
+
 ## Scenarios
 
 Also you will need to enable the setting to allow GitHub Actions to create Pull Requests if you are not using a PAT Token
@@ -59,7 +70,6 @@ jobs:
         labels-for-pr: automated pr, kind/cleanup, release-note-none # optional
         branch-for-pr: update-digests # optional
         title-for-pr: Update images digests # optional
-        description-for-pr: Update images digests # optional
         commit-message: Update images digests # optional
 ```
 
