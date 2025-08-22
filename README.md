@@ -169,6 +169,7 @@ patchesJSON6902:
 | `labels-for-pr` | A comma or newline separated list of labels to be used in the pull request.  | `automated pr, kind/cleanup, release-note-none` |
 | `branch-for-pr` | The pull request branch name.  | `update-digests` |
 | `title-for-pr` | The title of the pull request.  | `Update images digests` |
+| `description-for-pr` | The description of the pull request.  | `Update images digests ...` |
 | `commit-message` | The message to use when committing changes.  | `Update images digests` |
 | `create-pr` | Create a PR or just keep the changes locally.  | `true` |
 | `use-gitsign` | Use gitsign to sign commits.  | `true` |
