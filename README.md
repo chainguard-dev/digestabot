@@ -30,6 +30,10 @@ Authentication example:
     - uses: chainguard-dev/setup-chainctl@main
         with:
           identity: ${{ secrets.CHAINCTL_IDENTITY }}
+    - uses: actions/checkout@v4
+    - uses: chainguard-dev/digestabot@v1.0.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Scenarios
@@ -70,6 +74,7 @@ jobs:
         labels-for-pr: automated pr, kind/cleanup, release-note-none # optional
         branch-for-pr: update-digests # optional
         title-for-pr: Update images digests # optional
+        description-for-pr: Update images digests # optional
         commit-message: Update images digests # optional
 ```
 
