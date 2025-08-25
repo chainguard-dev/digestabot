@@ -16,7 +16,7 @@ This can be used to keep tags up-to-date whilst maintaining a reproducible build
 Basic usage:
 
 ```yaml
-    - uses: chainguard-dev/digestabot@v1.0.2
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -27,13 +27,17 @@ When accessing images in a private Chainguard registry, you will need to create 
 Authentication example:
 
 ```yaml
-    - uses: chainguard-dev/setup-chainctl@main
+...
+    - uses: chainguard-dev/setup-chainctl@be0acd273acf04bfdf91f51198327e719f6af978 # v0.4.0
         with:
           identity: ${{ secrets.CHAINCTL_IDENTITY }}
-    - uses: actions/checkout@v4
-    - uses: chainguard-dev/digestabot@v1.0.2
+
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+...
 ```
 
 ## Scenarios
@@ -64,8 +68,9 @@ jobs:
       id-token: write # used to sign the commits using gitsign
 
     steps:
-    - uses: actions/checkout@v4
-    - uses: chainguard-dev/digestabot@v1.0.2
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         signoff: true # optional
@@ -86,7 +91,7 @@ The schema of the output is described in [`action.yml`](action.yml).
 
 ```yaml
     # Run digestabot
-    - uses: chainguard-dev/digestabot@v1
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
       id: digestabot
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
