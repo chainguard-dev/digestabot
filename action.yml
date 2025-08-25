@@ -156,11 +156,11 @@ runs:
         fi
 
     # Configure gitsign for signed commits
-    - uses: chainguard-dev/actions/setup-gitsign@57cb0b7560d9b9b081c15ac5ef689f73f4dda03e # main branch as of 2024-08-02
+    - uses: chainguard-dev/actions/setup-gitsign@be7b31a01af8ce7228fe901326f1d223fb788e14 # v1.14.12
       if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' && inputs.use-gitsign == 'true' }}
 
     - name: Create Pull Request
-      uses: peter-evans/create-pull-request@5e914681df9dc83aa4e4905692ca88beb2f9e91f # v7.0.5
+      uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
       if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' }}
       id: pull_request
       with:
