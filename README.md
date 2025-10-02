@@ -185,6 +185,7 @@ patchesJSON6902:
 |------|-------------|
 | `pull_request_number` | Pull Request Number  |
 | `json` | The changes made by this action, in JSON format. Contains information about updated files, images, and digests. |
+| `changed_files` | A newline-separated list of files that were modified during the digest update process. Only includes files that actually had their digests updated.  |
 
 > **Note:** For complete details on inputs and outputs, please refer to the [action.yml](./action.yml) file.
 <!-- end automated updates do not change -->

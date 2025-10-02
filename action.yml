@@ -76,6 +76,11 @@ outputs:
       }
       ```
     value: ${{ steps.update_files.outputs.json }}
+  changed_files:
+    description: |
+      A newline-separated list of files that were modified during the digest update process.
+      Only includes files that actually had their digests updated.
+    value: ${{ steps.update_files.outputs.changed_files }}
 
 runs:
   using: "composite"
@@ -88,6 +93,7 @@ runs:
         # disable the errexit github enable that by default
         set +o errexit
         json='{}'
+        changed_files=()
         while IFS= read -r -d '' file; do
           if [[ "$file" == *testdata* ]]; then
             echo "Skipping testdata ${file}"
@@ -128,6 +134,10 @@ runs:
             if [ "$updated_digest" != "$digest" ] && [ -n "$updated_digest" ]; then
               echo "Digest $digest for image $image is different, new digest is $updated_digest, updating..."
               sed -i -e "s|$image@$digest|$image@$updated_digest|g" "$file"
+              # Add file to changed_files array if not already present
+              if [[ ! " ${changed_files[*]} " =~ " ${file} " ]]; then
+                changed_files+=("$file")
+              fi
               json=$(jq -c \
                 --arg file "${file}" \
                 --arg image "${image}" \
@@ -139,6 +149,15 @@ runs:
         done < <(find "${{ inputs.working-dir }}" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh"  -o -name "*.tf" -o -name "*.tfvars" \) -print0)
 
         echo "json=${json}" >> "${GITHUB_OUTPUT}"
+        
+        # Output the list of changed files
+        if [ ${#changed_files[@]} -gt 0 ]; then
+          echo "changed_files<<EOF" >> "${GITHUB_OUTPUT}"
+          printf '%s\n' "${changed_files[@]}" >> "${GITHUB_OUTPUT}"
+          echo "EOF" >> "${GITHUB_OUTPUT}"
+        else
+          echo "changed_files=" >> "${GITHUB_OUTPUT}"
+        fi
 
     - name: Check workspace
       id: create_pr_update
@@ -185,3 +204,4 @@ runs:
         author: ${{ inputs.author }}
         sign-commits: ${{ inputs.use-gitsign != 'true' }} # Sign commits with github if gitsign is not configured
         delete-branch: true
+        add-paths: ${{ steps.update_files.outputs.changed_files }}
