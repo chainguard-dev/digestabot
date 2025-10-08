@@ -167,6 +167,7 @@ patchesJSON6902:
 | Name | Description | Default |
 |------|-------------|--------|
 | `working-dir` | Working directory to run the digestabot, to run in a specific path, if not set will run from the root  | `.` |
+| `include-files` | Files (names or globs, comma-separated) that will be scanned for digest updates.  | `*.yaml,*.yml,Dockerfile*,Makefile*,*.sh,*.tf,*....` |
 | `token` | GITHUB_TOKEN or a `repo` scoped Personal Access Token (PAT)  | `${{ github.token }}` |
 | `signoff` | Add `Signed-off-by` line by the committer at the end of the commit log message.  | `false` |
 | `author` | The author name and email address in the format `Display Name <email@address.com>`. Defaults to the user who triggered the workflow run.  | `${{ github.actor }} <${{ github.actor_id }}+${{...` |

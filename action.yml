@@ -9,6 +9,10 @@ inputs:
     description: Working directory to run the digestabot, to run in a specific path, if not set will run from the root
     required: false
     default: .
+  include-files:
+    description: Files (names or globs, comma-separated) that will be scanned for digest updates.
+    required: false
+    default: '*.yaml,*.yml,Dockerfile*,Makefile*,*.sh,*.tf,*.tfvars'
   token:
     description: 'GITHUB_TOKEN or a `repo` scoped Personal Access Token (PAT)'
     required: true
@@ -87,6 +91,9 @@ runs:
       run: |
         # disable the errexit github enable that by default
         set +o errexit
+
+        IFS=',' read -ra PATTERNS <<< "${{ inputs.include-files }}"
+
         json='{}'
         while IFS= read -r -d '' file; do
           if [[ "$file" == *testdata* ]]; then
@@ -136,7 +143,17 @@ runs:
                 '.updates += [{file: $file, image: $image, digest: $digest, updated_digest: $updated_digest}]' <<<"${json}")
             fi
           done
-        done < <(find "${{ inputs.working-dir }}" -type f \( -name "*.yaml" -o -name "*.yml" -o -name "Dockerfile*" -o -name "Makefile*" -o -name "*.sh"  -o -name "*.tf" -o -name "*.tfvars" \) -print0)
+        done < <(
+            find_args=()
+            for i in "${!PATTERNS[@]}"; do
+                if [ $i -eq 0 ]; then
+                    find_args+=(-name "${PATTERNS[$i]}")
+                else
+                    find_args+=(-o -name "${PATTERNS[$i]}")
+                fi
+            done
+            find "${{ inputs.working-dir }}" -type f \( "${find_args[@]}" \) -print0
+        )
 
         echo "json=${json}" >> "${GITHUB_OUTPUT}"
 
