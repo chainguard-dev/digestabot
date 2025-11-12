@@ -62,6 +62,88 @@ jobs:
               exit 1
           fi
 
+  test-only-changed-digests-committed:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Create unrelated files that should not be committed
+        shell: bash
+        run: |
+          echo "secret-token-12345" > .credentials
+          echo "temp-data" > temp-file.txt
+
+      - name: Run Digestabot
+        uses: ./
+        id: digestabot
+        with:
+          create-pr: false
+
+      - name: Verify only files with changed digests are modified and unrelated files ignored
+        shell: bash
+        run: |
+          # Get the list of files that digestabot says it changed
+          digestabot_changed_files=$(echo '${{ steps.digestabot.outputs.changed_files }}' | tr '\n' ' ' | xargs)
+
+          # Get the list of files that git says are modified
+          git_modified_files=$(git diff --name-only && git diff --cached --name-only | sort | uniq | tr '\n' ' ' | xargs)
+
+          # Check that unrelated files we created are NOT in git changes
+          if echo "$git_modified_files" | grep -q ".credentials"; then
+            echo "Error: Unrelated file '.credentials' was committed"
+            exit 1
+          fi
+          if echo "$git_modified_files" | grep -q "temp-file.txt"; then
+            echo "Error: Unrelated file 'temp-file.txt' was committed"
+            exit 1
+          fi
+
+          # Normalize paths by removing ./ prefix and sorting
+          normalize_paths() {
+            echo "$1" | tr ' ' '\n' | sed 's|^\./||' | sort | uniq | tr '\n' ' ' | xargs
+          }
+
+          digestabot_normalized=$(normalize_paths "$digestabot_changed_files")
+          git_normalized=$(normalize_paths "$git_modified_files")
+
+          # If no files were changed by digestabot, git should also show no changes
+          if [ -z "$digestabot_normalized" ]; then
+            if [ -z "$git_normalized" ]; then
+              echo "Correct: No digests changed, no files modified"
+              exit 0
+            else
+              echo "Error: Digestabot changed no files but git shows modifications: $git_normalized"
+              exit 1
+            fi
+          fi
+
+          # If digestabot changed files, verify they match exactly with git's view
+          if [ "$digestabot_normalized" = "$git_normalized" ]; then
+            # Additional verification: check that each modified file actually has digest changes
+            echo '${{ steps.digestabot.outputs.json }}' | jq -r '.updates[] | .file' | sed 's|^\./||' | sort | uniq > /tmp/files_with_digest_changes
+            echo "$git_normalized" | tr ' ' '\n' | sort > /tmp/git_modified_files
+
+            if diff /tmp/files_with_digest_changes /tmp/git_modified_files >/dev/null; then
+              echo "Verified: All modified files have actual digest changes"
+              exit 0
+            else
+              echo "Error: Some modified files don't have digest changes"
+              exit 1
+            fi
+          else
+            echo "Error: Mismatch between digestabot reported changes and git modifications"
+            exit 1
+          fi
+
   test-working-dir:
     runs-on: ubuntu-latest
 
