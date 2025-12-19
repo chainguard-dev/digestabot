@@ -39,11 +39,6 @@ generate_inputs_table() {
             default=$(echo "${default}" | sed 's/|/\\|/g')
         fi
 
-        # Truncate long default values
-        if [[ ${#default} -gt 50 ]]; then
-            default="${default:0:47}..."
-        fi
-
         table+="| \`${name}\` | ${description} | \`${default}\` |\n"
     done
 

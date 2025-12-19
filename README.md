@@ -141,7 +141,7 @@ FROM cgr.dev/chainguard/busybox:latest@sha256:257157f6c6aa88dd934dcf6c2f140e42c2
 
 - Kustomizations:
 
-```
+```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -167,11 +167,11 @@ patchesJSON6902:
 | Name | Description | Default |
 |------|-------------|--------|
 | `working-dir` | Working directory to run the digestabot, to run in a specific path, if not set will run from the root  | `.` |
-| `include-files` | Files (names or globs, comma-separated) that will be scanned for digest updates.  | `*.yaml,*.yml,Dockerfile*,Makefile*,*.sh,*.tf,*....` |
+| `include-files` | Files (names or globs, comma-separated) that will be scanned for digest updates.  | `*.yaml,*.yml,Dockerfile*,Makefile*,*.sh,*.tf,*.tfvars` |
 | `token` | GITHUB_TOKEN or a `repo` scoped Personal Access Token (PAT)  | `${{ github.token }}` |
 | `signoff` | Add `Signed-off-by` line by the committer at the end of the commit log message.  | `false` |
-| `author` | The author name and email address in the format `Display Name <email@address.com>`. Defaults to the user who triggered the workflow run.  | `${{ github.actor }} <${{ github.actor_id }}+${{...` |
-| `committer` | The committer name and email address in the format `Display Name <email@address.com>`. Defaults to the GitHub Actions bot user.  | `github-actions[bot] <41898282+github-actions[bo...` |
+| `author` | The author name and email address in the format `Display Name <email@address.com>`. Defaults to the user who triggered the workflow run.  | `${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>` |
+| `committer` | The committer name and email address in the format `Display Name <email@address.com>`. Defaults to the GitHub Actions bot user.  | `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>` |
 | `labels-for-pr` | A comma or newline separated list of labels to be used in the pull request.  | `automated pr, kind/cleanup, release-note-none` |
 | `branch-for-pr` | The pull request branch name.  | `update-digests` |
 | `title-for-pr` | The title of the pull request.  | `Update images digests` |
