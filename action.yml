@@ -182,6 +182,7 @@ runs:
         CREATE_PR: ${{ inputs.create-pr }}
       shell: bash
       run: |
+        cd "${{ inputs.working-dir }}"
         git diff --stat
         echo "create_pr_update=false" >> $GITHUB_OUTPUT
         if [[ $(git diff --stat) != '' ]] && [[ "${CREATE_PR}" == 'true' ]]; then
