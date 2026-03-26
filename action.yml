@@ -93,11 +93,14 @@ runs:
 
     - shell: bash
       id: update_files
+      env:
+        INPUTS_INCLUDE_FILES: ${{ inputs.include-files }}
+        INPUTS_WORKING_DIR: ${{ inputs.working-dir }}
       run: |
         # disable the errexit github enable that by default
         set +o errexit
 
-        IFS=',' read -ra PATTERNS <<< "${{ inputs.include-files }}"
+        IFS=',' read -ra PATTERNS <<< "${INPUTS_INCLUDE_FILES}"
 
         json='{}'
         changed_files=()
@@ -162,11 +165,11 @@ runs:
                     find_args+=(-o -name "${PATTERNS[$i]}")
                 fi
             done
-            find "${{ inputs.working-dir }}" -type f \( "${find_args[@]}" \) -print0
+            find "${INPUTS_WORKING_DIR}" -type f \( "${find_args[@]}" \) -print0
         )
 
         echo "json=${json}" >> "${GITHUB_OUTPUT}"
-        
+
         # Output the list of changed files
         if [ ${#changed_files[@]} -gt 0 ]; then
           echo "changed_files<<EOF" >> "${GITHUB_OUTPUT}"
