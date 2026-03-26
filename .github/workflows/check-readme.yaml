@@ -41,11 +41,11 @@ jobs:
         run: |
           if diff -q README.md README.md.original &>/dev/null; then
             echo "No differences found. README.md is up-to-date."
-            echo "up_to_date=true" >> $GITHUB_OUTPUT
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
           else
             echo "Differences found. README.md needs to be updated."
             diff -u README.md.original README.md || true
-            echo "up_to_date=false" >> $GITHUB_OUTPUT
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Fail if README.md is not updated

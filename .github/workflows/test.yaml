@@ -8,10 +8,14 @@ on:
     branches:
       - 'main'
 
+permissions: {}
+
 jobs:
 
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -42,6 +46,8 @@ jobs:
 
       - name: Check json output
         shell: bash
+        env:
+          STEPS_DIGESTABOT_OUTPUTS_JSON: ${{ steps.digestabot.outputs.json }}
         run: |
           checks=(
             '.updates[] | .file and .file != ""'
@@ -51,7 +57,7 @@ jobs:
             '.updates[] | .digest != .updated_digest'
           )
           for check in "${checks[@]}"; do
-            jq -e "${check}" <<<'${{ steps.digestabot.outputs.json }}'
+            jq -e "${check}" <<<"${STEPS_DIGESTABOT_OUTPUTS_JSON}"
           done
 
       - name: Check for makefile change with blank spaces/tabs
@@ -64,6 +70,8 @@ jobs:
 
   test-only-changed-digests-committed:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -90,9 +98,12 @@ jobs:
 
       - name: Verify only files with changed digests are modified and unrelated files ignored
         shell: bash
+        env:
+          STEPS_DIGESTABOT_OUTPUTS_CHANGED_FILES: ${{ steps.digestabot.outputs.changed_files }}
+          STEPS_DIGESTABOT_OUTPUTS_JSON: ${{ steps.digestabot.outputs.json }}
         run: |
           # Get the list of files that digestabot says it changed
-          digestabot_changed_files=$(echo '${{ steps.digestabot.outputs.changed_files }}' | tr '\n' ' ' | xargs)
+          digestabot_changed_files=$(echo "${STEPS_DIGESTABOT_OUTPUTS_CHANGED_FILES}" | tr '\n' ' ' | xargs)
 
           # Get the list of files that git says are modified
           git_modified_files=$(git diff --name-only && git diff --cached --name-only | sort | uniq | tr '\n' ' ' | xargs)
@@ -129,7 +140,7 @@ jobs:
           # If digestabot changed files, verify they match exactly with git's view
           if [ "$digestabot_normalized" = "$git_normalized" ]; then
             # Additional verification: check that each modified file actually has digest changes
-            echo '${{ steps.digestabot.outputs.json }}' | jq -r '.updates[] | .file' | sed 's|^\./||' | sort | uniq > /tmp/files_with_digest_changes
+            echo "${STEPS_DIGESTABOT_OUTPUTS_JSON}" | jq -r '.updates[] | .file' | sed 's|^\./||' | sort | uniq > /tmp/files_with_digest_changes
             echo "$git_normalized" | tr ' ' '\n' | sort > /tmp/git_modified_files
 
             if diff /tmp/files_with_digest_changes /tmp/git_modified_files >/dev/null; then
@@ -146,6 +157,8 @@ jobs:
 
   test-working-dir:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
