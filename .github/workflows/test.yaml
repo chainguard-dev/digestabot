@@ -68,6 +68,21 @@ jobs:
               exit 1
           fi
 
+      - name: Check shell syntax preserved after digest update
+        shell: bash
+        run: |
+          if git diff --quiet HEAD -- testfiles/test-shell-syntax.sh; then
+              echo "testfiles/test-shell-syntax.sh has not changed."
+              exit 1
+          fi
+          # The script must still parse correctly after digest replacement.
+          # This catches bugs where trailing syntax chars (e.g. }) are eaten.
+          if ! bash -n testfiles/test-shell-syntax.sh; then
+              echo "Shell syntax broken after digest update!"
+              git diff testfiles/test-shell-syntax.sh
+              exit 1
+          fi
+
   test-only-changed-digests-committed:
     runs-on: ubuntu-latest
     permissions:
