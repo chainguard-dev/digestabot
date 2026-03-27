@@ -115,7 +115,12 @@ runs:
 
           for line in "${image_lines[@]}"; do
             image=$(echo "$line" | cut -d @ -f1 | rev | cut -d = -f1 | cut -d ' ' -f1 | cut -d '"' -f1 | rev | sed -e "s/^docker:\/\///" | tr -d '' | tr -d '\t')
-            digest=$(echo "$line"| cut -d @ -f2 | cut -d ' ' -f1 | cut -d '"' -f1 | tr -d '' | tr -d '\t')
+            # Extract exactly the sha256 digest (64 hex chars). Using grep -oE
+            # instead of cut to avoid capturing adjacent syntax characters like
+            # } in shell scripts (e.g. ${VAR:=image@sha256:...}") or ' in YAML
+            # (e.g. 'image@sha256:...'), which the old cut pipeline would include
+            # in the digest and then sed would delete during replacement.
+            digest=$(echo "$line"| grep -oE 'sha256:[a-f0-9]{64}' | head -1)
 
             if [[ "$image" != *":"* ]]; then
               echo "Image $image in file $file does not have a tag, ignoring..."
