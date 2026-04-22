@@ -56,6 +56,10 @@ inputs:
   use-gitsign:
     description: 'Use gitsign to sign commits.'
     default: 'true'
+  registry-map:
+    description: 'Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/'
+    required: false
+    default: ""
 
 outputs:
   pull_request_number:
@@ -99,6 +103,11 @@ runs:
 
         IFS=',' read -ra PATTERNS <<< "${{ inputs.include-files }}"
 
+        REGISTRY_MAPPINGS=()
+        if [ -n "${{ inputs.registry-map }}" ] ; then
+          IFS=',' read -ra REGISTRY_MAPPINGS <<< "${{ inputs.registry-map }}"
+        fi
+
         json='{}'
         changed_files=()
         while IFS= read -r -d '' file; do
@@ -125,12 +134,24 @@ runs:
 
             echo "Processing $image in file $file"
 
+            lookup_image="$image"
+            for mapping in "${REGISTRY_MAPPINGS[@]}"; do
+              proxy="${mapping%%=*}"
+              upstream="${mapping#*=}"
+              if [[ "$lookup_image" == "${proxy}"* ]]; then
+                lookup_image="${upstream}${lookup_image#${proxy}}"
+                echo "  Registry mapping: querying $lookup_image instead of $image"
+                break
+              fi
+            done
+
             updated_digest=
-            crane digest "$image" > digest.log 2> logerror.txt
+            crane digest "$lookup_image" > digest.log 2> logerror.txt
             if [ $? -eq 0 ]; then
                 updated_digest=$(cat digest.log)
             else
                 ERRMSG="Failed to retrieve digest info for $image"
+                [ "$lookup_image" != "$image" ] && ERRMSG="$ERRMSG (upstream: $lookup_image)"
                 echo "$ERRMSG"
                 echo "$ERRMSG" >> "$GITHUB_STEP_SUMMARY"
                 cat logerror.txt >> "$GITHUB_STEP_SUMMARY"

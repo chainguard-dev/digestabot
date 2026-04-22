@@ -1,0 +1,4 @@
+# Copyright 2026 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+FROM us-docker.pkg.dev/fake-proxy/chainguard/static:latest@sha256:0000000000000000000000000000000000000000000000000000000000000000
