@@ -60,7 +60,7 @@ inputs:
 outputs:
   pull_request_number:
     description: "Pull Request Number"
-    value: ${{ steps.pull_request.outputs.pull-request-number }}
+    value: ${{ steps.pull_request.outputs.pull_request_number }}
   json:
     description: |
       The changes made by this action, in json format.
@@ -246,30 +246,169 @@ runs:
     - uses: chainguard-dev/actions/setup-gitsign@de68b87302e6266db5fb5220246f8aa46fe94b67 # v1.6.14
       if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' && inputs.use-gitsign == 'true' }}
 
+    - name: Configure git credentials
+      if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' }}
+      shell: bash
+      run: |
+        git config --global credential.helper store
+        echo "https://x-access-token:${{ inputs.token }}@github.com" > ~/.git-credentials
+
     - name: Create Pull Request
-      uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' }}
       id: pull_request
+      env:
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        PR_TITLE: ${{ inputs.title-for-pr }}
+        PR_BODY: ${{ inputs.description-for-pr }}
+        PR_DIFF: ${{ steps.create_pr_update.outputs.diff }}
+        PR_LABELS: ${{ inputs.labels-for-pr }}
+        PR_BRANCH: ${{ inputs.branch-for-pr }}
+        AUTHOR: ${{ inputs.author }}
+        COMMITTER: ${{ inputs.committer }}
+        SIGNOFF: ${{ inputs.signoff }}
+        USE_GITSIGN: ${{ inputs.use-gitsign }}
+        CHANGED_FILES: ${{ steps.update_files.outputs.changed_files }}
+        WORKING_DIR: ${{ inputs.working-dir }}
       with:
-        token: ${{ inputs.token }}
-        commit-message: ${{ inputs.commit-message }}
-        title: ${{ inputs.title-for-pr }}
-        body: |
-          ${{ inputs.description-for-pr }}
+        github-token: ${{ inputs.token }}
+        script: |
+          const { execFileSync } = require('child_process');
 
-          ## Changes
-          <details>
+          try {
+            // Parse author and committer
+            const parseIdentity = (identity) => {
+              const match = identity.match(/^(.+?)\s*<(.+?)>$/);
+              if (!match) throw new Error(`Invalid identity format: ${identity}`);
+              return { name: match[1].trim(), email: match[2].trim() };
+            };
 
-          ```diff
-          ${{ steps.create_pr_update.outputs.diff }}
-          ```
+            const author = parseIdentity(process.env.AUTHOR);
+            const committer = parseIdentity(process.env.COMMITTER);
+            const prBranch = process.env.PR_BRANCH;
+            const changedFiles = process.env.CHANGED_FILES.split('\n').filter(f => f.trim());
 
-          </details>
-        labels: ${{ inputs.labels-for-pr }}
-        branch: ${{ inputs.branch-for-pr }}
-        signoff: ${{ inputs.signoff }}
-        committer: ${{ inputs.committer }}
-        author: ${{ inputs.author }}
-        sign-commits: ${{ inputs.use-gitsign != 'true' }} # Sign commits with github if gitsign is not configured
-        delete-branch: true
-        add-paths: ${{ steps.update_files.outputs.changed_files }}
+            // Helper to run git commands
+            const git = (...args) => {
+              return execFileSync('git', args, { encoding: 'utf8' }).trim();
+            };
+
+            // Get base branch and create/reset PR branch
+            const baseBranch = git('branch', '--show-current');
+
+            let branchExists = false;
+            try {
+              git('rev-parse', '--verify', prBranch);
+              branchExists = true;
+            } catch (e) {}
+
+            if (branchExists) {
+              git('checkout', prBranch);
+              git('reset', '--hard', baseBranch);
+            } else {
+              git('checkout', '-b', prBranch);
+            }
+
+            // Stage changed files
+            for (const file of changedFiles) {
+              git('add', '--', file);
+            }
+
+            // Commit with proper author/committer
+            const commitArgs = ['commit', '-m', process.env.COMMIT_MESSAGE];
+            if (process.env.SIGNOFF === 'true') {
+              commitArgs.push('--signoff');
+            }
+
+            execFileSync('git', commitArgs, {
+              encoding: 'utf8',
+              env: {
+                ...process.env,
+                GIT_AUTHOR_NAME: author.name,
+                GIT_AUTHOR_EMAIL: author.email,
+                GIT_COMMITTER_NAME: committer.name,
+                GIT_COMMITTER_EMAIL: committer.email,
+              }
+            });
+
+            console.log(`Committed: ${git('rev-parse', 'HEAD')}`);
+
+            // Push branch
+            git('push', 'origin', prBranch, '--force');
+
+            // Check if PR already exists
+            const { owner, repo } = context.repo;
+            const allPRs = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: `${owner}:${prBranch}`,
+              state: 'all'
+            });
+
+            const openPR = allPRs.data.find(pr => pr.state === 'open');
+            const closedPR = allPRs.data.find(pr => pr.state === 'closed');
+            const labels = process.env.PR_LABELS.split(/[,\n]/).map(l => l.trim()).filter(l => l);
+
+            // Build PR body
+            const diffFence = '```';
+            const prBody = process.env.PR_BODY + '\n\n## Changes\n<details>\n\n' +
+              diffFence + 'diff\n' + process.env.PR_DIFF + '\n' + diffFence + '\n\n</details>';
+
+            // Helper functions
+            const updatePR = async (prNumber) => {
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: prNumber,
+                title: process.env.PR_TITLE,
+                body: prBody
+              });
+            };
+
+            const addLabels = async (prNumber) => {
+              if (labels.length > 0) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels });
+              }
+            };
+
+            let prNumber;
+
+            if (openPR) {
+              // Update existing open PR
+              prNumber = openPR.number;
+              await updatePR(prNumber);
+            } else if (closedPR) {
+              // Closed PR exists (merged or just closed) - create a new PR instead of trying to reopen
+              console.log(`Found closed PR #${closedPR.number}, creating new PR instead`);
+              const { data: pr } = await github.rest.pulls.create({
+                owner,
+                repo,
+                head: prBranch,
+                base: baseBranch,
+                title: process.env.PR_TITLE,
+                body: prBody
+              });
+              prNumber = pr.number;
+            } else {
+              // No existing PR - create new one
+              const { data: pr } = await github.rest.pulls.create({
+                owner,
+                repo,
+                head: prBranch,
+                base: baseBranch,
+                title: process.env.PR_TITLE,
+                body: prBody
+              });
+              prNumber = pr.number;
+            }
+
+            // Add labels to PR
+            await addLabels(prNumber);
+
+            core.setOutput('pull_request_number', prNumber.toString());
+            console.log(`PR #${prNumber}`);
+
+          } catch (error) {
+            core.setFailed(`Failed to create pull request: ${error.message}`);
+            console.error(error);
+          }
