@@ -209,3 +209,55 @@ jobs:
               echo "Other files have been modified or there are no changes"
               exit 1
           fi
+
+  test-registry-map:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Run Digestabot with registry-map
+        uses: ./
+        id: digestabot
+        with:
+          create-pr: false
+          working-dir: './testfiles/registry-map'
+          include-files: 'fixture.image'
+          registry-map: 'us-docker.pkg.dev/fake-proxy/=cgr.dev/'
+
+      - name: Verify proxy URL preserved and digest updated
+        shell: bash
+        run: |
+          file='testfiles/registry-map/fixture.image'
+
+          # The proxy URL prefix must still be in the file (not rewritten to cgr.dev)
+          if ! grep -q 'us-docker.pkg.dev/fake-proxy/chainguard/static:latest' "$file"; then
+            echo "Error: proxy URL prefix was not preserved in $file"
+            cat "$file"
+            exit 1
+          fi
+
+          # The placeholder digest (all zeros) must have been replaced
+          if grep -q '@sha256:0000000000000000000000000000000000000000000000000000000000000000' "$file"; then
+            echo "Error: placeholder digest was not updated in $file"
+            cat "$file"
+            exit 1
+          fi
+
+          # The updated digest must be a valid sha256
+          if ! grep -qE '@sha256:[a-f0-9]{64}' "$file"; then
+            echo "Error: no valid sha256 digest found in $file"
+            cat "$file"
+            exit 1
+          fi
+
+          echo "Registry-map test passed:"
+          cat "$file"
