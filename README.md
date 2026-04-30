@@ -83,6 +83,17 @@ jobs:
         commit-message: Update images digests # optional
 ```
 
+### Registry Mapping
+
+When pulling images through a registry proxy (e.g. GCP Artifact Registry), the proxy may return stale digests. Use `registry-map` to resolve digests against the upstream registry while keeping the proxy URL in your files:
+
+```yaml
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        registry-map: 'us-docker.pkg.dev/my-project/cgr/=cgr.dev/,us-docker.pkg.dev/my-project/ghcr/=ghcr.io/'
+```
+
 The `json` output describes the updates that `digestabot` has made and makes it
 possible to extend the functionality of the action and act on the updates in
 subsequent steps.
@@ -179,6 +190,7 @@ patchesJSON6902:
 | `commit-message` | The message to use when committing changes.  | `Update images digests` |
 | `create-pr` | Create a PR or just keep the changes locally.  | `true` |
 | `use-gitsign` | Use gitsign to sign commits.  | `true` |
+| `registry-map` | Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/  | `` |
 
 ### Outputs
 
