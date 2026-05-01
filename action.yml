@@ -143,6 +143,7 @@ runs:
       env:
         INPUTS_INCLUDE_FILES: ${{ inputs.include-files }}
         INPUTS_WORKING_DIR: ${{ inputs.working-dir }}
+        INPUTS_REGISTRY_MAP: ${{ inputs.registry-map }}
       run: |
         # disable the errexit github enable that by default
         set +o errexit
@@ -150,8 +151,8 @@ runs:
         IFS=',' read -ra PATTERNS <<< "${INPUTS_INCLUDE_FILES}"
 
         REGISTRY_MAPPINGS=()
-        if [ -n "${{ inputs.registry-map }}" ] ; then
-          IFS=',' read -ra REGISTRY_MAPPINGS <<< "${{ inputs.registry-map }}"
+        if [ -n "${INPUTS_REGISTRY_MAP}" ] ; then
+          IFS=',' read -ra REGISTRY_MAPPINGS <<< "${INPUTS_REGISTRY_MAP}"
         fi
 
         json='{}'
