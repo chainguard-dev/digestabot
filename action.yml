@@ -135,8 +135,11 @@ runs:
 
     - name: Authenticate crane
       shell: bash
+      env:
+        INPUTS_TOKEN: ${{ inputs.token }}
+        GITHUB_ACTOR: ${{ github.actor }}
       run: |
-        echo "${{ inputs.token }}" | crane auth login ghcr.io --username "${{ github.actor }}" --password-stdin
+        echo "$INPUTS_TOKEN" | crane auth login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
     - shell: bash
       id: update_files
@@ -215,6 +218,8 @@ runs:
               echo "Digest $digest for image $image is different, new digest is $updated_digest, updating..."
               sed -i -e "s|$image@$digest|$image@$updated_digest|g" "$file"
               # Add file to changed_files array if not already present
+              # shellcheck disable=SC2076 -- quoted RHS is intentional: literal match guards
+              #   against regex metacharacters in filenames; see docs/backlog.md for refactor note
               if [[ ! " ${changed_files[*]} " =~ " ${file} " ]]; then
                 changed_files+=("$file")
               fi
@@ -271,9 +276,11 @@ runs:
     - name: Configure git credentials
       if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' }}
       shell: bash
+      env:
+        INPUTS_TOKEN: ${{ inputs.token }}
       run: |
         git config --global credential.helper store
-        echo "https://x-access-token:${{ inputs.token }}@github.com" > ~/.git-credentials
+        echo "https://x-access-token:${INPUTS_TOKEN}@github.com" > ~/.git-credentials
 
     - name: Create Pull Request
       uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
