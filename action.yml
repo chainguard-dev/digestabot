@@ -218,6 +218,8 @@ runs:
               echo "Digest $digest for image $image is different, new digest is $updated_digest, updating..."
               sed -i -e "s|$image@$digest|$image@$updated_digest|g" "$file"
               # Add file to changed_files array if not already present
+              # shellcheck disable=SC2076 -- quoted RHS is intentional: literal match guards
+              #   against regex metacharacters in filenames; see docs/backlog.md for refactor note
               if [[ ! " ${changed_files[*]} " =~ " ${file} " ]]; then
                 changed_files+=("$file")
               fi
