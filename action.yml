@@ -260,6 +260,7 @@ runs:
       env:
         CREATE_PR: ${{ inputs.create-pr }}
       shell: bash
+      working-directory: ${{ inputs.working-dir }}
       run: |
         git diff --stat
         echo "create_pr_update=false" >> "$GITHUB_OUTPUT"
