@@ -94,6 +94,7 @@ runs:
   using: "composite"
   steps:
     - name: Install crane
+      id: install_crane
       shell: bash
       run: |
         set -euo pipefail
@@ -122,13 +123,15 @@ runs:
         # Verify SHA256 checksum
         echo "${EXPECTED_CHECKSUM}  ${crane_tar}" | sha256sum --check --strict -
 
-        # Extract directly to destination and add to PATH
-        mkdir -p "${HOME}/.local/bin"
-        tar -xzf "${crane_tar}" -C "${HOME}/.local/bin" crane
-        echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+        # Extract directly to the destination and expose the explicit binary path
+        # to later steps so they do not depend on runner PATH propagation.
+        crane_path="${HOME}/.local/bin/crane"
+        mkdir -p "$(dirname "${crane_path}")"
+        tar -xzf "${crane_tar}" -C "$(dirname "${crane_path}")" crane
+        echo "crane_path=${crane_path}" >> "${GITHUB_OUTPUT}"
 
         # Verify installation
-        crane version
+        "${crane_path}" version
 
         # Clean up
         rm -f "${crane_tar}"
@@ -136,14 +139,16 @@ runs:
     - name: Authenticate crane
       shell: bash
       env:
+        CRANE_PATH: ${{ steps.install_crane.outputs.crane_path }}
         INPUTS_TOKEN: ${{ inputs.token }}
         GITHUB_ACTOR: ${{ github.actor }}
       run: |
-        echo "$INPUTS_TOKEN" | crane auth login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+        echo "$INPUTS_TOKEN" | "${CRANE_PATH}" auth login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
     - shell: bash
       id: update_files
       env:
+        CRANE_PATH: ${{ steps.install_crane.outputs.crane_path }}
         INPUTS_INCLUDE_FILES: ${{ inputs.include-files }}
         INPUTS_WORKING_DIR: ${{ inputs.working-dir }}
         INPUTS_REGISTRY_MAP: ${{ inputs.registry-map }}
@@ -201,7 +206,7 @@ runs:
             done
 
             updated_digest=
-            crane digest "$lookup_image" > digest.log 2> logerror.txt
+            "${CRANE_PATH}" digest "$lookup_image" > digest.log 2> logerror.txt
             if [ $? -eq 0 ]; then
                 updated_digest=$(cat digest.log)
             else
