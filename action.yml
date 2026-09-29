@@ -60,6 +60,10 @@ inputs:
     description: 'Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/'
     required: false
     default: ""
+  min-age:
+    description: 'Only update to digests pushed at least this many days ago, so a cooldown policy on the registry does not block pulling them. Uses the tag history of the Chainguard registry, so it only applies to cgr.dev images (after `registry-map`); other images are skipped. Disabled when empty or 0.'
+    required: false
+    default: ""
   sbom-diff:
     description: 'List the package changes of each updated image in the job summary and upload them as a workflow artifact, based on its SPDX SBOM attestation. Images without an SBOM are skipped.'
     default: 'false'
@@ -169,9 +173,18 @@ runs:
         INPUTS_INCLUDE_FILES: ${{ inputs.include-files }}
         INPUTS_WORKING_DIR: ${{ inputs.working-dir }}
         INPUTS_REGISTRY_MAP: ${{ inputs.registry-map }}
+        INPUTS_MIN_AGE: ${{ inputs.min-age }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         # disable the errexit github enable that by default
         set +o errexit
+
+        MIN_AGE="${INPUTS_MIN_AGE:-0}"
+        if [[ ! "${MIN_AGE}" =~ ^[0-9]+$ ]]; then
+          echo "::error::min-age must be a whole number of days, got '${INPUTS_MIN_AGE}'"
+          exit 1
+        fi
+        MIN_AGE=$((10#${MIN_AGE}))
 
         IFS=',' read -ra PATTERNS <<< "${INPUTS_INCLUDE_FILES}"
 
@@ -229,12 +242,20 @@ runs:
               fi
             done
 
+            # with min-age the result also depends on the current digest,
+            # which is never downgraded
+            cache_key="$lookup_image"
+            [ "${MIN_AGE}" -gt 0 ] && cache_key="$lookup_image@$digest"
+
             updated_digest=
-            if [ -n "${resolved_digests[$lookup_image]:-}" ]; then
-                updated_digest="${resolved_digests[$lookup_image]}"
-            elif "${CRANE_PATH}" digest "$lookup_image" > digest.log 2> logerror.txt; then
+            if [ -n "${resolved_digests[$cache_key]:-}" ]; then
+                updated_digest="${resolved_digests[$cache_key]}"
+            elif [ "${MIN_AGE}" -gt 0 ] && "${ACTION_PATH}/scripts/cooldown-digest.sh" "$lookup_image" "$digest" "${MIN_AGE}" > digest.log 2> logerror.txt; then
                 updated_digest=$(cat digest.log)
-                resolved_digests[$lookup_image]="$updated_digest"
+                resolved_digests[$cache_key]="$updated_digest"
+            elif [ "${MIN_AGE}" -eq 0 ] && "${CRANE_PATH}" digest "$lookup_image" > digest.log 2> logerror.txt; then
+                updated_digest=$(cat digest.log)
+                resolved_digests[$cache_key]="$updated_digest"
             else
                 ERRMSG="Failed to retrieve digest info for $image"
                 [ "$lookup_image" != "$image" ] && ERRMSG="$ERRMSG (upstream: $lookup_image)"

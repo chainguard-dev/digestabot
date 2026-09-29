@@ -94,6 +94,25 @@ When pulling images through a registry proxy (e.g. GCP Artifact Registry), the p
         registry-map: 'us-docker.pkg.dev/my-project/cgr/=cgr.dev/,us-docker.pkg.dev/my-project/ghcr/=ghcr.io/'
 ```
 
+### Cooldown
+
+When the registry enforces a [cooldown policy](https://edu.chainguard.dev/chainguard/chainguard-repository/container-policies/#cooldown),
+digests newer than the cooldown period can't be pulled. Chainguard images are
+rebuilt often, so the latest digest of a tag is usually still in that window.
+
+Set `min-age` to the cooldown period, in days, to update to the most recent
+digest that is at least that old instead. It uses the tag history of the
+Chainguard registry, so it only applies to `cgr.dev` images (after
+`registry-map`). Other images are skipped and reported in the job summary.
+A pinned digest is never replaced by an older one.
+
+```yaml
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        min-age: 7
+```
+
 ### Package changes
 
 Set `sbom-diff: true` to list, for every updated image that publishes an SPDX
@@ -206,6 +225,7 @@ patchesJSON6902:
 | `create-pr` | Create a PR or just keep the changes locally.  | `true` |
 | `use-gitsign` | Use gitsign to sign commits.  | `true` |
 | `registry-map` | Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/  | `` |
+| `min-age` | Only update to digests pushed at least this many days ago, so a cooldown policy on the registry does not block pulling them. Uses the tag history of the Chainguard registry, so it only applies to cgr.dev images (after `registry-map`); other images are skipped. Disabled when empty or 0.  | `` |
 | `sbom-diff` | List the package changes of each updated image in the job summary and upload them as a workflow artifact, based on its SPDX SBOM attestation. Images without an SBOM are skipped.  | `false` |
 | `sbom-platform` | Platform of the image whose SBOM is used for the package changes.  | `linux/amd64` |
 | `sbom-diff-artifact-name` | Name of the workflow artifact with the package changes (`sbom-diff.json` and `sbom-diff.md`). Must be unique within the workflow run.  | `digestabot-sbom-diff` |
