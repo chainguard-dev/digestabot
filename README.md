@@ -109,6 +109,8 @@ The package changes are written to the job summary and the `sbom_diff` output,
 and uploaded as the `sbom-diff-artifact-name` workflow artifact
 (`sbom-diff.json` and `sbom-diff.md`) for further analysis.
 
+### Acting on the updates
+
 The `json` output describes the updates that `digestabot` has made and makes it
 possible to extend the functionality of the action and act on the updates in
 subsequent steps.
@@ -124,12 +126,62 @@ The schema of the output is described in [`action.yml`](action.yml).
 
     # Iterate over the updates in the `json` output
     - shell: bash
+      env:
+        UPDATES: ${{ steps.digestabot.outputs.json }}
       run: |
         while read -r update; do
           updated_image=$(jq -r '.image + "@" + .updated_digest' <<<"${update}")
 
           echo "Do something with ${updated_image} here."
-        done < <(jq -c '.updates // [] | .[]' <<<'${{ steps.digestabot.outputs.json }}')
+        done < <(jq -c '.updates // [] | .[]' <<<"${UPDATES}")
+```
+
+### Filtering the updates
+
+To decide yourself which updates to apply, set `create-pr: false`. `digestabot`
+then leaves its changes uncommitted in the working tree and still reports them
+in the `json` output. Discard the changes, re-apply only the updates you want,
+and open the pull request in a later step.
+
+This example only keeps the updates of Chainguard images that remove
+vulnerabilities, using `chainctl image diff`:
+
+```yaml
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+      id: digestabot
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        create-pr: false
+
+    - shell: bash
+      env:
+        UPDATES: ${{ steps.digestabot.outputs.json }}
+      run: |
+        # Discard the changes made by digestabot
+        git reset --hard && git clean -fd
+
+        while read -r update; do
+          image=$(jq -r '.image' <<<"${update}")
+          digest=$(jq -r '.digest' <<<"${update}")
+          updated_digest=$(jq -r '.updated_digest' <<<"${update}")
+          file=$(jq -r '.file' <<<"${update}")
+
+          if [[ ! "${image}" =~ ^cgr\.dev/ ]]; then
+            echo "Skipping ${image}: not a Chainguard image."
+            continue
+          fi
+
+          removed=$(chainctl image diff -o json "${image}@${digest}" "${image}@${updated_digest}" \
+            | jq -r '.vulnerabilities.removed // [] | .[]')
+          if [[ -z "${removed}" ]]; then
+            echo "Skipping ${image}: no vulnerabilities removed."
+            continue
+          fi
+
+          sed -i -e "s|${digest}|${updated_digest}|g" "${file}"
+        done < <(jq -c '.updates // [] | .[]' <<<"${UPDATES}")
+
+    # Commit the remaining changes and open a pull request here.
 ```
 
 ## File examples
