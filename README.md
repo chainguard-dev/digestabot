@@ -133,6 +133,108 @@ skipped.
         stale-after: 30
 ```
 
+### Signature verification
+
+Set `verify-signatures` to verify the [cosign](https://github.com/sigstore/cosign)
+signature of every new digest before `digestabot` updates it. It is disabled by
+default.
+
+`verify-signatures` is a YAML list of rules. Each rule maps one or more image
+prefixes to the certificate identity and issuer the signature must have:
+
+| Key | Description |
+|-----|-------------|
+| `images` | Image prefix, or list of image prefixes, the rule applies to. |
+| `identity` / `identity-regexp` | Expected certificate identity, exact or as a regular expression. Set exactly one. |
+| `issuer` / `issuer-regexp` | Expected certificate OIDC issuer, exact or as a regular expression. Set exactly one. |
+
+How the rules are applied:
+
+- Images are matched against the prefixes after `registry-map`, so the
+  signatures are always read from the upstream registry. When several prefixes
+  match, the longest one wins.
+- Images that no rule matches are updated without verification, as without
+  `verify-signatures`.
+- When a signature can't be verified, the update is skipped and the old digest
+  is kept. The failure is annotated on the file, listed in the job summary and
+  returned in the `verification_failures` output. The other updates are still
+  applied.
+- An invalid policy fails the step before any image is updated.
+
+The policy is read with `yq`, which is installed on the GitHub-hosted runners.
+
+#### Public Chainguard images
+
+```yaml
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        verify-signatures: |
+          - images: cgr.dev/chainguard/
+            identity: https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main
+            issuer: https://token.actions.githubusercontent.com
+```
+
+#### Images from different signers
+
+Each signer gets its own rule. This example verifies the public Chainguard
+images, the images of a Chainguard organization, and the sigstore images, and
+updates any other image without verification:
+
+```yaml
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        verify-signatures: |
+          - images: cgr.dev/chainguard/
+            identity: https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main
+            issuer: https://token.actions.githubusercontent.com
+          - images: cgr.dev/my-org/
+            identity-regexp: ^https://issuer\.enforce\.dev/(<catalog-syncer-id>|<apko-builder-id>)$
+            issuer: https://issuer.enforce.dev
+          - images:
+              - ghcr.io/sigstore/
+              - gcr.io/projectsigstore/
+            identity-regexp: ^https://github\.com/sigstore/
+            issuer: https://token.actions.githubusercontent.com
+```
+
+See [Verifying Chainguard Containers](https://edu.chainguard.dev/chainguard/chainguard-images/how-to-use/verifying-chainguard-images-and-metadata-signatures-with-cosign/)
+for the identities that sign the images of your organization.
+
+#### Policy file
+
+`verify-signatures` can also be the path of a file with the policy, relative to
+the root of the repository, so it is reviewed like the rest of the code:
+
+```yaml
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        verify-signatures: .github/digestabot-signatures.yaml
+```
+
+#### Acting on failures
+
+Skipped updates don't fail the job. To fail it, or to open an issue, use the
+`verification_failures` output:
+
+```yaml
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+      id: digestabot
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        verify-signatures: .github/digestabot-signatures.yaml
+
+    - if: ${{ steps.digestabot.outputs.verification_failures != '[]' }}
+      shell: bash
+      env:
+        FAILURES: ${{ steps.digestabot.outputs.verification_failures }}
+      run: |
+        jq -r '.[] | "\(.image) \(.updated_digest) in \(.file): \(.error)"' <<<"${FAILURES}"
+        exit 1
+```
+
 ### Package changes
 
 Set `sbom-diff: true` to list, for every updated image that publishes an SPDX
@@ -299,6 +401,7 @@ patchesJSON6902:
 | `registry-map` | Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/  | `` |
 | `min-age` | Only update to digests pushed at least this many days ago, so a cooldown policy on the registry does not block pulling them. Uses the tag history of the Chainguard registry, so it only applies to cgr.dev images (after `registry-map`); other images are skipped. Disabled when empty or 0.  | `` |
 | `stale-after` | Warn about image tags that were not rebuilt in this many days, as they may have reached their end of life and no longer receive patches. Uses the build time of the image (`org.opencontainers.image.created`); images without one are skipped. Disabled when empty or 0.  | `` |
+| `verify-signatures` | Verify the cosign signature of the new digests before updating them. A YAML list of rules mapping image prefixes to the expected certificate identity and issuer, or the path of a file with it. Updates whose signature cannot be verified are skipped; images not matched by any rule are not verified. Disabled when empty.  | `` |
 | `sbom-diff` | List the package changes of each updated image in the job summary and upload them as a workflow artifact, based on its SPDX SBOM attestation. Images without an SBOM are skipped.  | `false` |
 | `sbom-platform` | Platform of the image whose SBOM is used for the package changes.  | `linux/amd64` |
 | `sbom-diff-artifact-name` | Name of the workflow artifact with the package changes (`sbom-diff.json` and `sbom-diff.md`). Must be unique within the workflow run.  | `digestabot-sbom-diff` |
@@ -313,6 +416,7 @@ patchesJSON6902:
 | `sbom_diff` | Markdown summary of the package changes of each updated image, based on its SPDX SBOM attestation. Empty when `sbom-diff` is disabled or no digest was updated.  |
 | `sbom_diff_artifact_url` | URL of the workflow artifact with the package changes. Empty when `sbom-diff` is disabled or no digest was updated.  |
 | `stale_tags` | The image tags that were not rebuilt in the last `stale-after` days, in json format. Empty when `stale-after` is disabled.  The output follows this structure:  ``` [   {     "image": "cgr.dev/chainguard/python:3.9",     "lookup_image": "cgr.dev/chainguard/python:3.9",     "files": ["Dockerfile"],     "created": "2026-06-01T00:00:00Z",     "age_days": 120   } ] ```  |
+| `verification_failures` | The updates that were skipped because the signature of the new digest could not be verified, in json format. Empty when `verify-signatures` is disabled.  The output follows this structure:  ``` [   {     "file": "Dockerfile",     "image": "cgr.dev/chainguard/static:latest",     "digest": "sha256:a117fb6e8c62246fe60e40eaa0c2cb51575db8cec42c114bc5a9d4cb89d94fee",     "updated_digest": "sha256:41e17ed83c594a64a9396b6ab96dd26d5ddc290dacf4c177464712ff21ad534f",     "error": "no matching signatures"   } ] ```  |
 
 > **Note:** For complete details on inputs and outputs, please refer to the [action.yml](./action.yml) file.
 <!-- end automated updates do not change -->

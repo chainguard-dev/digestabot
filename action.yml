@@ -68,6 +68,10 @@ inputs:
     description: 'Warn about image tags that were not rebuilt in this many days, as they may have reached their end of life and no longer receive patches. Uses the build time of the image (`org.opencontainers.image.created`); images without one are skipped. Disabled when empty or 0.'
     required: false
     default: ""
+  verify-signatures:
+    description: 'Verify the cosign signature of the new digests before updating them. A YAML list of rules mapping image prefixes to the expected certificate identity and issuer, or the path of a file with it. Updates whose signature cannot be verified are skipped; images not matched by any rule are not verified. Disabled when empty.'
+    required: false
+    default: ""
   sbom-diff:
     description: 'List the package changes of each updated image in the job summary and upload them as a workflow artifact, based on its SPDX SBOM attestation. Images without an SBOM are skipped.'
     default: 'false'
@@ -133,6 +137,25 @@ outputs:
       ]
       ```
     value: ${{ steps.stale_tags.outputs.stale_tags }}
+  verification_failures:
+    description: |
+      The updates that were skipped because the signature of the new digest could not be verified, in json format.
+      Empty when `verify-signatures` is disabled.
+
+      The output follows this structure:
+
+      ```
+      [
+        {
+          "file": "Dockerfile",
+          "image": "cgr.dev/chainguard/static:latest",
+          "digest": "sha256:a117fb6e8c62246fe60e40eaa0c2cb51575db8cec42c114bc5a9d4cb89d94fee",
+          "updated_digest": "sha256:41e17ed83c594a64a9396b6ab96dd26d5ddc290dacf4c177464712ff21ad534f",
+          "error": "no matching signatures"
+        }
+      ]
+      ```
+    value: ${{ steps.update_files.outputs.verification_failures }}
 
 runs:
   using: "composite"
@@ -189,6 +212,22 @@ runs:
       run: |
         echo "$INPUTS_TOKEN" | "${CRANE_PATH}" auth login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
+    - name: Read the signature policy
+      id: signature_policy
+      if: ${{ inputs.verify-signatures != '' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        VERIFY_SIGNATURES: ${{ inputs.verify-signatures }}
+      run: |
+        policy="${RUNNER_TEMP}/digestabot-signature-policy.json"
+        "${ACTION_PATH}/scripts/signature-policy.sh" "${VERIFY_SIGNATURES}" > "${policy}"
+        echo "policy=${policy}" >> "${GITHUB_OUTPUT}"
+
+    - name: Install cosign
+      if: ${{ steps.signature_policy.outputs.policy != '' }}
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
     - shell: bash
       id: update_files
       env:
@@ -197,6 +236,7 @@ runs:
         INPUTS_WORKING_DIR: ${{ inputs.working-dir }}
         INPUTS_REGISTRY_MAP: ${{ inputs.registry-map }}
         INPUTS_MIN_AGE: ${{ inputs.min-age }}
+        SIGNATURE_POLICY: ${{ steps.signature_policy.outputs.policy }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         # disable the errexit github enable that by default
@@ -226,6 +266,10 @@ runs:
 
         # digests already resolved, so an image referenced in several places is looked up once
         declare -A resolved_digests
+
+        # signature verification result per image digest, and the updates skipped
+        declare -A verified
+        verification_failures='[]'
 
         json='{}'
         changed_files=()
@@ -294,6 +338,31 @@ runs:
             rm -f logerror.txt
             rm -f digest.log
 
+            if [ -n "${SIGNATURE_POLICY}" ] && [ "$updated_digest" != "$digest" ] && [ -n "$updated_digest" ]; then
+              verify_key="$lookup_image@$updated_digest"
+              if [ -z "${verified[$verify_key]:-}" ]; then
+                "${ACTION_PATH}/scripts/verify-signature.sh" "${SIGNATURE_POLICY}" "$lookup_image" "$updated_digest" 2> verify.log
+                case $? in
+                  0) verified[$verify_key]=ok ;;
+                  3) verified[$verify_key]=ok; echo "  No signature rule matches $lookup_image, not verifying it" ;;
+                  *) verified[$verify_key]=$(grep -v '^Verifying the signature' verify.log | tail -n 1 | sed -e 's/^error during command execution: //')
+                     verified[$verify_key]=${verified[$verify_key]:-signature verification failed} ;;
+                esac
+                cat verify.log
+                rm -f verify.log
+              fi
+              if [ "${verified[$verify_key]}" != ok ]; then
+                error="${verified[$verify_key]}"
+                line=$(grep -n -F -m 1 "$image@$digest" "$file" | cut -d : -f 1)
+                echo "::warning file=${file},line=${line:-1},title=Signature verification failed::Not updating ${image} to ${updated_digest}: ${error}"
+                verification_failures=$(jq -c \
+                  --arg file "${file}" --arg image "${image}" --arg digest "${digest}" \
+                  --arg updated_digest "${updated_digest}" --arg error "${error}" \
+                  '. += [{file: $file, image: $image, digest: $digest, updated_digest: $updated_digest, error: $error}]' <<<"${verification_failures}")
+                updated_digest=
+              fi
+            fi
+
             if [ "$updated_digest" != "$digest" ] && [ -n "$updated_digest" ]; then
               echo "Digest $digest for image $image is different, new digest is $updated_digest, updating..."
               sed -i -e "s|$image@$digest|$image@$updated_digest|g" "$file"
@@ -326,6 +395,15 @@ runs:
         )
 
         echo "json=${json}" >> "${GITHUB_OUTPUT}"
+
+        if [ -n "${SIGNATURE_POLICY}" ]; then
+          echo "verification_failures=${verification_failures}" >> "${GITHUB_OUTPUT}"
+          jq -r 'if length == 0 then empty else
+              "## Signature verification failed\n\nThese updates were skipped because the signature of the new digest could not be verified.\n\n" +
+              "| Image | New digest | File | Error |\n|-------|------------|------|-------|\n" +
+              (map("| `\(.image)` | `\(.updated_digest)` | `\(.file)` | \(.error | gsub("\\|"; "\\\\|")) |\n") | join(""))
+            end' <<<"${verification_failures}" >> "${GITHUB_STEP_SUMMARY}"
+        fi
 
         # Output the list of changed files
         if [ ${#changed_files[@]} -gt 0 ]; then

@@ -143,6 +143,100 @@ jobs:
         shell: bash
         run: ./scripts/stale-tags-test.sh
 
+  test-verify-signature-script:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run verify-signature.sh tests
+        shell: bash
+        run: ./scripts/verify-signature-test.sh
+
+  test-verify-signatures:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Digestabot with an inline policy
+        uses: ./ # zizmor: ignore[self-repository]
+        id: digestabot_inline
+        with:
+          create-pr: false
+          working-dir: './testfiles/verify-signatures'
+          include-files: 'fixture.image'
+          verify-signatures: |
+            - images: cgr.dev/chainguard/
+              identity: https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main
+              issuer: https://token.actions.githubusercontent.com
+
+      - name: Check that the verified images were updated
+        shell: bash
+        env:
+          FAILURES: ${{ steps.digestabot_inline.outputs.verification_failures }}
+        run: |
+          file='testfiles/verify-signatures/fixture.image'
+          cat "${file}"
+          if grep -q '@sha256:0000000000000000000000000000000000000000000000000000000000000000' "${file}"; then
+            echo "Error: a verified image was not updated"
+            exit 1
+          fi
+          if [ "${FAILURES}" != "[]" ]; then
+            echo "Error: want no verification failures, got ${FAILURES}"
+            exit 1
+          fi
+          git checkout -- .
+
+      - name: Run Digestabot with a policy file
+        uses: ./ # zizmor: ignore[self-repository]
+        id: digestabot_file
+        with:
+          create-pr: false
+          working-dir: './testfiles/verify-signatures'
+          include-files: 'fixture.image'
+          verify-signatures: testfiles/verify-signatures/policy.yaml
+
+      - name: Check that the unverified image was not updated
+        shell: bash
+        env:
+          FAILURES: ${{ steps.digestabot_file.outputs.verification_failures }}
+        run: |
+          file='testfiles/verify-signatures/fixture.image'
+          cat "${file}"
+          if grep -q 'static:latest@sha256:0000000000000000000000000000000000000000000000000000000000000000' "${file}"; then
+            echo "Error: the verified static image was not updated"
+            exit 1
+          fi
+          if ! grep -q 'busybox:latest@sha256:0000000000000000000000000000000000000000000000000000000000000000' "${file}"; then
+            echo "Error: the busybox image was updated although its signature does not match the policy"
+            exit 1
+          fi
+          if [ "$(jq -r '[.[].image] | join(",")' <<<"${FAILURES}")" != "cgr.dev/chainguard/busybox:latest" ]; then
+            echo "Error: want a verification failure for busybox, got ${FAILURES}"
+            exit 1
+          fi
+
   test-sbom-diff:
     runs-on: ubuntu-latest
     permissions:
