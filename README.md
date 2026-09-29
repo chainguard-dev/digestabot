@@ -113,6 +113,26 @@ A pinned digest is never replaced by an older one.
         min-age: 7
 ```
 
+### Stale tags
+
+`digestabot` keeps the digests of your tags up to date, but not the tags
+themselves. Once a tag reaches its end of life it is no longer rebuilt, and the
+pinned image stops receiving patches.
+
+Set `stale-after` to a number of days to warn about the tags that were not
+rebuilt in that period. They are annotated in the workflow run, listed in the
+job summary and in the pull request, and returned in the `stale_tags` output.
+The build time comes from the `org.opencontainers.image.created` annotation or
+the image config; images without one, like most reproducible builds, are
+skipped.
+
+```yaml
+    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        stale-after: 30
+```
+
 ### Package changes
 
 Set `sbom-diff: true` to list, for every updated image that publishes an SPDX
@@ -278,6 +298,7 @@ patchesJSON6902:
 | `use-gitsign` | Use gitsign to sign commits.  | `true` |
 | `registry-map` | Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/  | `` |
 | `min-age` | Only update to digests pushed at least this many days ago, so a cooldown policy on the registry does not block pulling them. Uses the tag history of the Chainguard registry, so it only applies to cgr.dev images (after `registry-map`); other images are skipped. Disabled when empty or 0.  | `` |
+| `stale-after` | Warn about image tags that were not rebuilt in this many days, as they may have reached their end of life and no longer receive patches. Uses the build time of the image (`org.opencontainers.image.created`); images without one are skipped. Disabled when empty or 0.  | `` |
 | `sbom-diff` | List the package changes of each updated image in the job summary and upload them as a workflow artifact, based on its SPDX SBOM attestation. Images without an SBOM are skipped.  | `false` |
 | `sbom-platform` | Platform of the image whose SBOM is used for the package changes.  | `linux/amd64` |
 | `sbom-diff-artifact-name` | Name of the workflow artifact with the package changes (`sbom-diff.json` and `sbom-diff.md`). Must be unique within the workflow run.  | `digestabot-sbom-diff` |
@@ -291,6 +312,7 @@ patchesJSON6902:
 | `changed_files` | A newline-separated list of files that were modified during the digest update process. Only includes files that actually had their digests updated.  |
 | `sbom_diff` | Markdown summary of the package changes of each updated image, based on its SPDX SBOM attestation. Empty when `sbom-diff` is disabled or no digest was updated.  |
 | `sbom_diff_artifact_url` | URL of the workflow artifact with the package changes. Empty when `sbom-diff` is disabled or no digest was updated.  |
+| `stale_tags` | The image tags that were not rebuilt in the last `stale-after` days, in json format. Empty when `stale-after` is disabled.  The output follows this structure:  ``` [   {     "image": "cgr.dev/chainguard/python:3.9",     "lookup_image": "cgr.dev/chainguard/python:3.9",     "files": ["Dockerfile"],     "created": "2026-06-01T00:00:00Z",     "age_days": 120   } ] ```  |
 
 > **Note:** For complete details on inputs and outputs, please refer to the [action.yml](./action.yml) file.
 <!-- end automated updates do not change -->
