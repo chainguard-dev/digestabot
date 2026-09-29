@@ -83,6 +83,84 @@ jobs:
               exit 1
           fi
 
+  test-sbom-diff-script:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run sbom-diff.sh tests
+        shell: bash
+        run: ./scripts/sbom-diff-test.sh
+
+  test-sbom-diff:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Digestabot with sbom-diff disabled
+        uses: ./ # zizmor: ignore[self-repository]
+        id: digestabot_no_sbom
+        with:
+          create-pr: false
+          sbom-diff: false
+
+      - name: Check sbom_diff output is empty
+        shell: bash
+        env:
+          STEPS_DIGESTABOT_NO_SBOM_OUTPUTS_CHANGED_FILES: ${{ steps.digestabot_no_sbom.outputs.changed_files }}
+          STEPS_DIGESTABOT_NO_SBOM_OUTPUTS_SBOM_DIFF: ${{ steps.digestabot_no_sbom.outputs.sbom_diff }}
+        run: |
+          if [ -z "${STEPS_DIGESTABOT_NO_SBOM_OUTPUTS_CHANGED_FILES}" ]; then
+            echo "should exist changes"
+            exit 1
+          fi
+          if [ -n "${STEPS_DIGESTABOT_NO_SBOM_OUTPUTS_SBOM_DIFF}" ]; then
+            echo "sbom_diff output should be empty when sbom-diff is disabled"
+            exit 1
+          fi
+          git checkout -- .
+
+      - name: Run Digestabot
+        uses: ./ # zizmor: ignore[self-repository]
+        id: digestabot
+        with:
+          create-pr: false
+
+      - name: Check sbom_diff output
+        shell: bash
+        env:
+          STEPS_DIGESTABOT_OUTPUTS_SBOM_DIFF: ${{ steps.digestabot.outputs.sbom_diff }}
+        run: |
+          echo "${STEPS_DIGESTABOT_OUTPUTS_SBOM_DIFF}"
+          # The testfiles pin stale cgr.dev digests, so at least one image must
+          # report its package changes.
+          if ! grep -q '^| Package | Old | New |$' <<<"${STEPS_DIGESTABOT_OUTPUTS_SBOM_DIFF}"; then
+            echo "sbom_diff output has no package changes table"
+            exit 1
+          fi
+
   test-only-changed-digests-committed:
     runs-on: ubuntu-latest
     permissions:

@@ -60,6 +60,12 @@ inputs:
     description: 'Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/'
     required: false
     default: ""
+  sbom-diff:
+    description: 'List the package changes of each updated image in the job summary, based on its SPDX SBOM attestation. Images without an SBOM are skipped.'
+    default: 'true'
+  sbom-platform:
+    description: 'Platform of the image whose SBOM is used for the package changes.'
+    default: 'linux/amd64'
 
 outputs:
   pull_request_number:
@@ -89,6 +95,11 @@ outputs:
       A newline-separated list of files that were modified during the digest update process.
       Only includes files that actually had their digests updated.
     value: ${{ steps.update_files.outputs.changed_files }}
+  sbom_diff:
+    description: |
+      Markdown summary of the package changes of each updated image, based on its SPDX SBOM attestation.
+      Empty when `sbom-diff` is disabled or no digest was updated.
+    value: ${{ steps.sbom_diff.outputs.sbom_diff }}
 
 runs:
   using: "composite"
@@ -163,6 +174,10 @@ runs:
           IFS=',' read -ra REGISTRY_MAPPINGS <<< "${INPUTS_REGISTRY_MAP}"
         fi
 
+        # image, lookup image and old/new digest of every update, consumed by the SBOM diff step
+        sbom_targets="${RUNNER_TEMP}/digestabot-sbom-targets.tsv"
+        : > "${sbom_targets}"
+
         json='{}'
         changed_files=()
         while IFS= read -r -d '' file; do
@@ -235,6 +250,7 @@ runs:
                 --arg digest "${digest}" \
                 --arg updated_digest "${updated_digest}" \
                 '.updates += [{file: $file, image: $image, digest: $digest, updated_digest: $updated_digest}]' <<<"${json}")
+              printf '%s\t%s\t%s\t%s\n' "${image}" "${lookup_image}" "${digest}" "${updated_digest}" >> "${sbom_targets}"
             fi
           done
         done < <(
@@ -259,6 +275,27 @@ runs:
         else
           echo "changed_files=" >> "${GITHUB_OUTPUT}"
         fi
+
+    - name: Diff image SBOMs
+      id: sbom_diff
+      if: ${{ inputs.sbom-diff == 'true' && steps.update_files.outputs.changed_files != '' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CRANE_PATH: ${{ steps.install_crane.outputs.crane_path }}
+        SBOM_PLATFORM: ${{ inputs.sbom-platform }}
+      run: |
+        sbom_diff=$("${ACTION_PATH}/scripts/sbom-diff.sh" < "${RUNNER_TEMP}/digestabot-sbom-targets.tsv")
+        [ -n "${sbom_diff}" ] || exit 0
+
+        { echo "## Package changes"; echo; echo "${sbom_diff}"; } >> "${GITHUB_STEP_SUMMARY}"
+
+        delimiter="EOF_$(openssl rand -hex 16)"
+        {
+          echo "sbom_diff<<${delimiter}"
+          echo "${sbom_diff}"
+          echo "${delimiter}"
+        } >> "${GITHUB_OUTPUT}"
 
     - name: Check workspace
       id: create_pr_update

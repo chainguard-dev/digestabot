@@ -94,6 +94,16 @@ When pulling images through a registry proxy (e.g. GCP Artifact Registry), the p
         registry-map: 'us-docker.pkg.dev/my-project/cgr/=cgr.dev/,us-docker.pkg.dev/my-project/ghcr/=ghcr.io/'
 ```
 
+### Package changes
+
+For images that publish an SPDX SBOM attestation (e.g. Chainguard images), the
+job summary lists the packages whose version changed between the old and the
+new digest, using the SBOM of the `sbom-platform` image (`linux/amd64` by
+default). Images without an SBOM are listed as such and otherwise ignored. The
+same summary is available in the `sbom_diff` output.
+
+Set `sbom-diff: false` to disable it.
+
 The `json` output describes the updates that `digestabot` has made and makes it
 possible to extend the functionality of the action and act on the updates in
 subsequent steps.
@@ -191,6 +201,8 @@ patchesJSON6902:
 | `create-pr` | Create a PR or just keep the changes locally.  | `true` |
 | `use-gitsign` | Use gitsign to sign commits.  | `true` |
 | `registry-map` | Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/  | `` |
+| `sbom-diff` | List the package changes of each updated image in the job summary, based on its SPDX SBOM attestation. Images without an SBOM are skipped.  | `true` |
+| `sbom-platform` | Platform of the image whose SBOM is used for the package changes.  | `linux/amd64` |
 
 ### Outputs
 
@@ -199,6 +211,7 @@ patchesJSON6902:
 | `pull_request_number` | Pull Request Number  |
 | `json` | The changes made by this action, in JSON format. Contains information about updated files, images, and digests. |
 | `changed_files` | A newline-separated list of files that were modified during the digest update process. Only includes files that actually had their digests updated.  |
+| `sbom_diff` | Markdown summary of the package changes of each updated image, based on its SPDX SBOM attestation. Empty when `sbom-diff` is disabled or no digest was updated.  |
 
 > **Note:** For complete details on inputs and outputs, please refer to the [action.yml](./action.yml) file.
 <!-- end automated updates do not change -->
