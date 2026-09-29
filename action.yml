@@ -64,6 +64,10 @@ inputs:
     description: 'Only update to digests pushed at least this many days ago, so a cooldown policy on the registry does not block pulling them. Uses the tag history of the Chainguard registry, so it only applies to cgr.dev images (after `registry-map`); other images are skipped. Disabled when empty or 0.'
     required: false
     default: ""
+  stale-after:
+    description: 'Warn about image tags that were not rebuilt in this many days, as they may have reached their end of life and no longer receive patches. Uses the build time of the image (`org.opencontainers.image.created`); images without one are skipped. Disabled when empty or 0.'
+    required: false
+    default: ""
   sbom-diff:
     description: 'List the package changes of each updated image in the job summary and upload them as a workflow artifact, based on its SPDX SBOM attestation. Images without an SBOM are skipped.'
     default: 'false'
@@ -110,6 +114,25 @@ outputs:
   sbom_diff_artifact_url:
     description: 'URL of the workflow artifact with the package changes. Empty when `sbom-diff` is disabled or no digest was updated.'
     value: ${{ steps.upload_sbom_diff.outputs.artifact-url }}
+  stale_tags:
+    description: |
+      The image tags that were not rebuilt in the last `stale-after` days, in json format.
+      Empty when `stale-after` is disabled.
+
+      The output follows this structure:
+
+      ```
+      [
+        {
+          "image": "cgr.dev/chainguard/python:3.9",
+          "lookup_image": "cgr.dev/chainguard/python:3.9",
+          "files": ["Dockerfile"],
+          "created": "2026-06-01T00:00:00Z",
+          "age_days": 120
+        }
+      ]
+      ```
+    value: ${{ steps.stale_tags.outputs.stale_tags }}
 
 runs:
   using: "composite"
@@ -197,6 +220,10 @@ runs:
         sbom_targets="${RUNNER_TEMP}/digestabot-sbom-targets.tsv"
         : > "${sbom_targets}"
 
+        # file, image and lookup image of every image, consumed by the stale tags step
+        image_targets="${RUNNER_TEMP}/digestabot-images.tsv"
+        : > "${image_targets}"
+
         # digests already resolved, so an image referenced in several places is looked up once
         declare -A resolved_digests
 
@@ -241,6 +268,7 @@ runs:
                 break
               fi
             done
+            printf '%s\t%s\t%s\n' "${file}" "${image}" "${lookup_image}" >> "${image_targets}"
 
             # with min-age the result also depends on the current digest,
             # which is never downgraded
@@ -339,6 +367,42 @@ runs:
         path: ${{ steps.sbom_diff.outputs.dir }}
         if-no-files-found: error
 
+    - name: Check for stale tags
+      id: stale_tags
+      if: ${{ inputs.stale-after != '' && inputs.stale-after != '0' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CRANE_PATH: ${{ steps.install_crane.outputs.crane_path }}
+        STALE_AFTER: ${{ inputs.stale-after }}
+      run: |
+        if [[ ! "${STALE_AFTER}" =~ ^[0-9]+$ ]]; then
+          echo "::error::stale-after must be a whole number of days, got '${STALE_AFTER}'"
+          exit 1
+        fi
+
+        out_dir="${RUNNER_TEMP}/digestabot-stale-tags"
+        "${ACTION_PATH}/scripts/stale-tags.sh" "${STALE_AFTER}" "${out_dir}" < "${RUNNER_TEMP}/digestabot-images.tsv"
+
+        # annotate the line of every file that uses a stale tag
+        jq -r '.[] | . as $t | .files[] | [., $t.image, $t.created[:10], $t.age_days] | @tsv' "${out_dir}/stale-tags.json" |
+          while IFS=$'\t' read -r file image created age; do
+            line=$(grep -n -F -m 1 "${image}@" "${file}" | cut -d : -f 1)
+            echo "::warning file=${file},line=${line:-1},title=Stale image tag::${image} was last built on ${created} (${age} days ago). The tag may have reached its end of life and no longer receive patches; consider moving to a supported tag."
+          done
+
+        if [ -s "${out_dir}/stale-tags.md" ]; then
+          { echo "## Stale tags"; echo; cat "${out_dir}/stale-tags.md"; } >> "${GITHUB_STEP_SUMMARY}"
+        fi
+
+        echo "stale_tags=$(jq -c . "${out_dir}/stale-tags.json")" >> "${GITHUB_OUTPUT}"
+        delimiter="EOF_$(openssl rand -hex 16)"
+        {
+          echo "stale_tags_md<<${delimiter}"
+          cat "${out_dir}/stale-tags.md"
+          echo "${delimiter}"
+        } >> "${GITHUB_OUTPUT}"
+
     - name: Check workspace
       id: create_pr_update
       env:
@@ -385,6 +449,7 @@ runs:
         USE_GITSIGN: ${{ inputs.use-gitsign }}
         CHANGED_FILES: ${{ steps.update_files.outputs.changed_files }}
         WORKING_DIR: ${{ inputs.working-dir }}
+        STALE_TAGS_MD: ${{ steps.stale_tags.outputs.stale_tags_md }}
       with:
         github-token: ${{ inputs.token }}
         script: |
@@ -467,7 +532,8 @@ runs:
             // Build PR body
             const diffFence = '```';
             const prBody = process.env.PR_BODY + '\n\n## Changes\n<details>\n\n' +
-              diffFence + 'diff\n' + process.env.PR_DIFF + '\n' + diffFence + '\n\n</details>';
+              diffFence + 'diff\n' + process.env.PR_DIFF + '\n' + diffFence + '\n\n</details>' +
+              (process.env.STALE_TAGS_MD ? '\n\n## Stale tags\n\n' + process.env.STALE_TAGS_MD : '');
 
             // Helper functions
             const updatePR = async (prNumber) => {
