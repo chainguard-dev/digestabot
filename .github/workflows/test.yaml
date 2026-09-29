@@ -119,12 +119,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run Digestabot with sbom-diff disabled
+      - name: Run Digestabot with sbom-diff disabled (default)
         uses: ./ # zizmor: ignore[self-repository]
         id: digestabot_no_sbom
         with:
           create-pr: false
-          sbom-diff: false
 
       - name: Check sbom_diff output is empty
         shell: bash
@@ -147,13 +146,19 @@ jobs:
         id: digestabot
         with:
           create-pr: false
+          sbom-diff: true
 
       - name: Check sbom_diff output
         shell: bash
         env:
           STEPS_DIGESTABOT_OUTPUTS_SBOM_DIFF: ${{ steps.digestabot.outputs.sbom_diff }}
+          STEPS_DIGESTABOT_OUTPUTS_SBOM_DIFF_ARTIFACT_URL: ${{ steps.digestabot.outputs.sbom_diff_artifact_url }}
         run: |
           echo "${STEPS_DIGESTABOT_OUTPUTS_SBOM_DIFF}"
+          if [ -z "${STEPS_DIGESTABOT_OUTPUTS_SBOM_DIFF_ARTIFACT_URL}" ]; then
+            echo "sbom_diff artifact was not uploaded"
+            exit 1
+          fi
           # The testfiles pin stale cgr.dev digests, so at least one image must
           # report its package changes.
           if ! grep -q '^| Package | Old | New |$' <<<"${STEPS_DIGESTABOT_OUTPUTS_SBOM_DIFF}"; then

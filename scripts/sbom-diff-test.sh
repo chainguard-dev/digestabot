@@ -67,27 +67,46 @@ index() {
 
 failures=0
 out=
+json=
+
+# run_sbom_diff runs sbom-diff.sh on the updates given on stdin, and loads the
+# markdown and JSON it writes into ${out} and ${json}.
+run_sbom_diff() {
+  : > "${fixtures}/calls"
+  rm -rf "${fixtures}/out"
+  "${script}" "${fixtures}/out"
+  out=$(cat "${fixtures}/out/sbom-diff.md")
+  json=$(cat "${fixtures}/out/sbom-diff.json")
+  echo "${out}"
+}
 
 # run <description> <image> <lookup image> <old> <new> runs sbom-diff.sh on a single update.
 run() {
   echo "=== $1"
-  : > "${fixtures}/calls"
-  out=$(printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" | "${script}")
-  echo "${out}"
+  run_sbom_diff < <(printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5")
+}
+
+# fail <message> records a failure.
+fail() {
+  echo "FAIL: $1"
+  failures=$((failures + 1))
 }
 
 expect() {
-  if ! grep -qxF -- "$1" <<<"${out}"; then
-    echo "FAIL: expected line: $1"
-    failures=$((failures + 1))
-  fi
+  grep -qxF -- "$1" <<<"${out}" || fail "expected line: $1"
 }
 
 expect_not() {
-  if grep -qF -- "$1" <<<"${out}"; then
-    echo "FAIL: unexpected: $1"
-    failures=$((failures + 1))
-  fi
+  ! grep -qF -- "$1" <<<"${out}" || fail "unexpected: $1"
+}
+
+expect_json() {
+  jq -e "$1" <<<"${json}" > /dev/null || fail "expected JSON to match: $1"
+}
+
+# calls <crane call> prints how many times crane was called with these arguments.
+calls() {
+  grep -cxF -- "$1" "${fixtures}/calls"
 }
 
 sbom sha256:old busybox@1.36.0-r0 glibc@2.42-r0 zlib@1.3-r0
@@ -101,14 +120,24 @@ expect "| glibc | 2.42-r0 | - |"
 expect "| glibc-2.44 | - | 2.44-r0 |"
 expect_not "zlib"
 expect_not "wolfi-baselayout.yaml"
+expect_json '. == [{
+  image: "cgr.dev/chainguard/busybox:latest", lookup_image: "cgr.dev/chainguard/busybox:latest",
+  digest: "sha256:old", updated_digest: "sha256:new", sbom: true,
+  changes: [
+    {package: "busybox", version: "1.36.0-r0", updated_version: "1.36.1-r0"},
+    {package: "glibc", version: "2.42-r0", updated_version: null},
+    {package: "glibc-2.44", version: null, updated_version: "2.44-r0"}
+  ]}]'
 
 run "no package changes" cgr.dev/chainguard/busybox:latest cgr.dev/chainguard/busybox:latest sha256:new sha256:rebuilt
 expect "- \`cgr.dev/chainguard/busybox:latest\`: no package changes"
 expect_not "<details>"
+expect_json '.[0].sbom == true and .[0].changes == []'
 
 run "missing SBOM" docker.io/library/alpine:3.20 docker.io/library/alpine:3.20 sha256:unknown sha256:new
 expect "- \`docker.io/library/alpine:3.20\`: SBOM not available"
 expect_not "<details>"
+expect_json '.[0].sbom == false and .[0].changes == []'
 
 index sha256:old-index linux/amd64 sha256:old
 index sha256:old-index linux/arm64 sha256:new
@@ -122,34 +151,39 @@ expect "- \`cgr.dev/chainguard/busybox:latest\`: no package changes"
 
 run "registry-map lookups use the upstream repository" us-docker.pkg.dev/proxy/chainguard/busybox:latest cgr.dev/chainguard/busybox:latest sha256:old sha256:new
 expect "<summary><code>us-docker.pkg.dev/proxy/chainguard/busybox:latest</code>: 3 package change(s)</summary>"
-if grep -q 'us-docker.pkg.dev' "${fixtures}/calls" || ! grep -qxF 'manifest cgr.dev/chainguard/busybox:sha256-old.att' "${fixtures}/calls"; then
-  echo "FAIL: crane was not called with the upstream repository"
+if grep -q 'us-docker.pkg.dev' "${fixtures}/calls" || [ "$(calls 'manifest cgr.dev/chainguard/busybox:sha256-old.att')" -ne 1 ]; then
+  fail "crane was not called with the upstream repository"
   cat "${fixtures}/calls"
-  failures=$((failures + 1))
 fi
 
 run "registry with a port" localhost:5000/busybox:latest localhost:5000/busybox:latest sha256:old sha256:new
-if ! grep -qxF 'manifest localhost:5000/busybox:sha256-old.att' "${fixtures}/calls"; then
-  echo "FAIL: repository with a registry port was not parsed correctly"
+if [ "$(calls 'manifest localhost:5000/busybox:sha256-old.att')" -ne 1 ]; then
+  fail "repository with a registry port was not parsed correctly"
   cat "${fixtures}/calls"
-  failures=$((failures + 1))
 fi
 
-echo "=== duplicate updates are reported once"
-out=$(printf '%s\t%s\t%s\t%s\n' \
+echo "=== duplicate updates are compared once"
+run_sbom_diff < <(printf '%s\t%s\t%s\t%s\n' \
   cgr.dev/chainguard/busybox:latest cgr.dev/chainguard/busybox:latest sha256:old sha256:new \
-  cgr.dev/chainguard/busybox:latest cgr.dev/chainguard/busybox:latest sha256:old sha256:new | "${script}")
-if [ "$(grep -c '^<details>$' <<<"${out}")" -ne 1 ]; then
-  echo "FAIL: duplicate update reported more than once"
-  failures=$((failures + 1))
-fi
+  cgr.dev/chainguard/busybox:latest cgr.dev/chainguard/busybox:latest sha256:old sha256:new \
+  us-docker.pkg.dev/proxy/chainguard/busybox:latest cgr.dev/chainguard/busybox:latest sha256:old sha256:new)
+expect_json 'length == 1'
+[ "$(grep -c '^<details>$' <<<"${out}")" -eq 1 ] || fail "duplicate update reported more than once"
+
+echo "=== the SBOM of a digest is fetched once"
+run_sbom_diff < <(printf '%s\t%s\t%s\t%s\n' \
+  cgr.dev/chainguard/busybox:latest cgr.dev/chainguard/busybox:latest sha256:old sha256:new \
+  cgr.dev/chainguard/busybox:latest-dev cgr.dev/chainguard/busybox:latest-dev sha256:rebuilt sha256:new \
+  docker.io/library/alpine:3.20 docker.io/library/alpine:3.20 sha256:unknown sha256:new \
+  docker.io/library/alpine:3.21 docker.io/library/alpine:3.21 sha256:unknown sha256:new)
+expect_json 'length == 4'
+[ "$(calls 'manifest cgr.dev/chainguard/busybox:sha256-new.att')" -eq 1 ] || fail "SBOM of sha256:new fetched more than once"
+[ "$(calls 'manifest docker.io/library/alpine:sha256-unknown.att')" -eq 1 ] || fail "missing SBOM fetched more than once"
 
 echo "=== no updates"
-out=$("${script}" < /dev/null)
-if [ -n "${out}" ]; then
-  echo "FAIL: expected no output without updates"
-  failures=$((failures + 1))
-fi
+run_sbom_diff < /dev/null
+[ -z "${out}" ] || fail "expected no markdown without updates"
+expect_json '. == []'
 
 if [ "${failures}" -ne 0 ]; then
   echo "${failures} failure(s)"

@@ -61,11 +61,14 @@ inputs:
     required: false
     default: ""
   sbom-diff:
-    description: 'List the package changes of each updated image in the job summary, based on its SPDX SBOM attestation. Images without an SBOM are skipped.'
-    default: 'true'
+    description: 'List the package changes of each updated image in the job summary and upload them as a workflow artifact, based on its SPDX SBOM attestation. Images without an SBOM are skipped.'
+    default: 'false'
   sbom-platform:
     description: 'Platform of the image whose SBOM is used for the package changes.'
     default: 'linux/amd64'
+  sbom-diff-artifact-name:
+    description: 'Name of the workflow artifact with the package changes (`sbom-diff.json` and `sbom-diff.md`). Must be unique within the workflow run.'
+    default: 'digestabot-sbom-diff'
 
 outputs:
   pull_request_number:
@@ -100,6 +103,9 @@ outputs:
       Markdown summary of the package changes of each updated image, based on its SPDX SBOM attestation.
       Empty when `sbom-diff` is disabled or no digest was updated.
     value: ${{ steps.sbom_diff.outputs.sbom_diff }}
+  sbom_diff_artifact_url:
+    description: 'URL of the workflow artifact with the package changes. Empty when `sbom-diff` is disabled or no digest was updated.'
+    value: ${{ steps.upload_sbom_diff.outputs.artifact-url }}
 
 runs:
   using: "composite"
@@ -178,6 +184,9 @@ runs:
         sbom_targets="${RUNNER_TEMP}/digestabot-sbom-targets.tsv"
         : > "${sbom_targets}"
 
+        # digests already resolved, so an image referenced in several places is looked up once
+        declare -A resolved_digests
+
         json='{}'
         changed_files=()
         while IFS= read -r -d '' file; do
@@ -221,9 +230,11 @@ runs:
             done
 
             updated_digest=
-            "${CRANE_PATH}" digest "$lookup_image" > digest.log 2> logerror.txt
-            if [ $? -eq 0 ]; then
+            if [ -n "${resolved_digests[$lookup_image]:-}" ]; then
+                updated_digest="${resolved_digests[$lookup_image]}"
+            elif "${CRANE_PATH}" digest "$lookup_image" > digest.log 2> logerror.txt; then
                 updated_digest=$(cat digest.log)
+                resolved_digests[$lookup_image]="$updated_digest"
             else
                 ERRMSG="Failed to retrieve digest info for $image"
                 [ "$lookup_image" != "$image" ] && ERRMSG="$ERRMSG (upstream: $lookup_image)"
@@ -285,17 +296,27 @@ runs:
         CRANE_PATH: ${{ steps.install_crane.outputs.crane_path }}
         SBOM_PLATFORM: ${{ inputs.sbom-platform }}
       run: |
-        sbom_diff=$("${ACTION_PATH}/scripts/sbom-diff.sh" < "${RUNNER_TEMP}/digestabot-sbom-targets.tsv")
-        [ -n "${sbom_diff}" ] || exit 0
+        out_dir="${RUNNER_TEMP}/digestabot-sbom-diff"
+        "${ACTION_PATH}/scripts/sbom-diff.sh" "${out_dir}" < "${RUNNER_TEMP}/digestabot-sbom-targets.tsv"
+        echo "dir=${out_dir}" >> "${GITHUB_OUTPUT}"
 
-        { echo "## Package changes"; echo; echo "${sbom_diff}"; } >> "${GITHUB_STEP_SUMMARY}"
+        { echo "## Package changes"; echo; cat "${out_dir}/sbom-diff.md"; } >> "${GITHUB_STEP_SUMMARY}"
 
         delimiter="EOF_$(openssl rand -hex 16)"
         {
           echo "sbom_diff<<${delimiter}"
-          echo "${sbom_diff}"
+          cat "${out_dir}/sbom-diff.md"
           echo "${delimiter}"
         } >> "${GITHUB_OUTPUT}"
+
+    - name: Upload SBOM diff
+      id: upload_sbom_diff
+      if: ${{ steps.sbom_diff.outputs.dir != '' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.sbom-diff-artifact-name }}
+        path: ${{ steps.sbom_diff.outputs.dir }}
+        if-no-files-found: error
 
     - name: Check workspace
       id: create_pr_update
