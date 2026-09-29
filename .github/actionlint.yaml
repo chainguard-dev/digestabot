@@ -1,0 +1,9 @@
+# Copyright 2026 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+paths:
+  .github/workflows/test.yaml:
+    ignore:
+      # actionlint doesn't know GitHub's self-repository syntax (`uses: $/`)
+      # yet, see https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/
+      - 'specifying action "\$/" in invalid format'

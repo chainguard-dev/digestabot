@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Digestabot
-        uses: ./
+        uses: $/
         id: digestabot
         with:
           create-pr: false
@@ -160,7 +160,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Digestabot with sbom-diff disabled (default)
-        uses: ./ # zizmor: ignore[self-repository]
+        uses: $/
         id: digestabot_no_sbom
         with:
           create-pr: false
@@ -182,7 +182,7 @@ jobs:
           git checkout -- .
 
       - name: Run Digestabot
-        uses: ./ # zizmor: ignore[self-repository]
+        uses: $/
         id: digestabot
         with:
           create-pr: false
@@ -229,7 +229,7 @@ jobs:
           echo "temp-data" > temp-file.txt
 
       - name: Run Digestabot
-        uses: ./
+        uses: $/
         id: digestabot
         with:
           create-pr: false
@@ -310,7 +310,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Digestabot
-        uses: ./
+        uses: $/
         with:
           create-pr: false
           working-dir: './testfiles/test-dir'
@@ -348,7 +348,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Digestabot with registry-map
-        uses: ./
+        uses: $/
         id: digestabot
         with:
           create-pr: false
