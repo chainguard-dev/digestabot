@@ -498,7 +498,7 @@ runs:
         fi
 
     # Configure gitsign for signed commits
-    - uses: chainguard-dev/actions/setup-gitsign@ec1df73a5b59652ce6862329ecc9a29ddaef9f46 # v1.6.39
+    - uses: chainguard-dev/actions/setup-gitsign@84b1be4c638f12d4256ddddef17af98853b6d0d9 # v1.6.40
       if: ${{ steps.create_pr_update.outputs.create_pr_update == 'true' && inputs.use-gitsign == 'true' }}
 
     - name: Configure git credentials
