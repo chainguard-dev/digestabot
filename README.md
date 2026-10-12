@@ -16,25 +16,49 @@ This can be used to keep tags up-to-date whilst maintaining a reproducible build
 Basic usage:
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+The examples in this README are pinned to the latest release. To keep the
+version you use up to date, enable [Dependabot version updates](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuring-dependabot-version-updates)
+for GitHub Actions in your repository; it updates the commit and the version
+comment of pinned actions:
+
+```yaml
+# .github/dependabot.yml
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+```
+
+> [!NOTE]
+> Some features documented below (`min-age`, `stale-after`,
+> `verify-signatures` and `sbom-diff`) are on `main` but not in a release yet.
+> They are marked as such, and will be available in the release after v1.3.2.
 
 ### Authentication
 When accessing images in a private Chainguard registry, you will need to create an assumable identity with the `viewer` role, and add a step to set up the `chainctl` prior to running digestabot.
+
+To use images from an internal registry only, such as Amazon ECR, Azure
+Container Registry or JFrog Artifactory, without connecting to `cgr.dev`, see
+[Using digestabot with an internal registry only](docs/internal-registries.md).
 
 Authentication example:
 
 ```yaml
 ...
-    - uses: chainguard-dev/setup-chainctl@be0acd273acf04bfdf91f51198327e719f6af978 # v0.4.0
-        with:
-          identity: ${{ secrets.CHAINCTL_IDENTITY }}
+    - uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
+      with:
+        identity: ${{ secrets.CHAINCTL_IDENTITY }}
 
-    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
 ...
@@ -65,12 +89,12 @@ jobs:
     permissions:
       contents: write # to push the updates
       pull-requests: write # to open Pull requests
-      id-token: write # used to sign the commits using gitsign
+      id-token: write # to sign the commits with gitsign, not needed with use-gitsign: false
 
     steps:
-    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         signoff: true # optional
@@ -83,18 +107,60 @@ jobs:
         commit-message: Update images digests # optional
 ```
 
+### Commit signing
+
+By default (`use-gitsign: true`), digestabot signs its commits with
+[gitsign](https://github.com/sigstore/gitsign), which uses Sigstore keyless
+signing: it gets a short-lived certificate from Fulcio for the identity of the
+workflow and records the signature in the public Rekor transparency log. This
+needs the `id-token: write` permission and access to the Sigstore public good
+instance, see [Network access and dependencies](docs/network-and-dependencies.md#commit-signing).
+
+GitHub doesn't recognize the Sigstore certificate authority, so it shows these
+commits as **Unverified**, and a branch protection rule that requires signed
+commits blocks the pull request.
+
+Set `use-gitsign: false` if gitsign doesn't fit your environment, for example
+when the runners can't reach Sigstore, when the workflow identity must not be
+published in a public log, or when unverified commits can't be merged:
+
+```yaml
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        use-gitsign: false
+```
+
+digestabot then doesn't install gitsign, doesn't contact Sigstore and doesn't
+need `id-token: write`. A gitsign configuration left on the runner by another
+step (e.g. a separate `setup-gitsign` step, or a previous job on a persistent
+self-hosted runner) is ignored as well, so it doesn't sign the commit or warn
+about Sigstore. Other signing configurations, such as a GPG or SSH key set up
+in an earlier step, are still used.
+
+### Network access and dependencies
+
+digestabot downloads `crane` (and, depending on the inputs, `cosign` and
+`gitsign`) from GitHub releases, connects to the registries of your images and
+to the GitHub API, and to Sigstore to sign commits. See
+[Network access and dependencies](docs/network-and-dependencies.md) for the
+tools it uses, the endpoints it connects to for each input, and an example
+egress allow-list.
+
 ### Registry Mapping
 
 When pulling images through a registry proxy (e.g. GCP Artifact Registry), the proxy may return stale digests. Use `registry-map` to resolve digests against the upstream registry while keeping the proxy URL in your files:
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         registry-map: 'us-docker.pkg.dev/my-project/cgr/=cgr.dev/,us-docker.pkg.dev/my-project/ghcr/=ghcr.io/'
 ```
 
 ### Cooldown
+
+> *Not released yet: available on `main`, in the release after v1.3.2.*
 
 When the registry enforces a [cooldown policy](https://edu.chainguard.dev/chainguard/chainguard-repository/container-policies/#cooldown),
 digests newer than the cooldown period can't be pulled. Chainguard images are
@@ -107,13 +173,15 @@ Chainguard registry, so it only applies to `cgr.dev` images (after
 A pinned digest is never replaced by an older one.
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         min-age: 7
 ```
 
 ### Stale tags
+
+> *Not released yet: available on `main`, in the release after v1.3.2.*
 
 `digestabot` keeps the digests of your tags up to date, but not the tags
 themselves. Once a tag reaches its end of life it is no longer rebuilt, and the
@@ -127,13 +195,15 @@ the image config; images without one, like most reproducible builds, are
 skipped.
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         stale-after: 30
 ```
 
 ### Signature verification
+
+> *Not released yet: available on `main`, in the release after v1.3.2.*
 
 Set `verify-signatures` to verify the [cosign](https://github.com/sigstore/cosign)
 signature of every new digest before `digestabot` updates it. It is disabled by
@@ -166,7 +236,7 @@ The policy is read with `yq`, which is installed on the GitHub-hosted runners.
 #### Public Chainguard images
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         verify-signatures: |
@@ -182,7 +252,7 @@ images, the images of a Chainguard organization, and the sigstore images, and
 updates any other image without verification:
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         verify-signatures: |
@@ -208,7 +278,7 @@ for the identities that sign the images of your organization.
 the root of the repository, so it is reviewed like the rest of the code:
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         verify-signatures: .github/digestabot-signatures.yaml
@@ -220,7 +290,7 @@ Skipped updates don't fail the job. To fail it, or to open an issue, use the
 `verification_failures` output:
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       id: digestabot
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
@@ -236,6 +306,8 @@ Skipped updates don't fail the job. To fail it, or to open an issue, use the
 ```
 
 ### Package changes
+
+> *Not released yet: available on `main`, in the release after v1.3.2.*
 
 Set `sbom-diff: true` to list, for every updated image that publishes an SPDX
 SBOM attestation (e.g. Chainguard images), the packages whose version changed
@@ -260,7 +332,7 @@ The schema of the output is described in [`action.yml`](action.yml).
 
 ```yaml
     # Run digestabot
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       id: digestabot
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
@@ -288,7 +360,7 @@ This example only keeps the updates of Chainguard images that remove
 vulnerabilities, using `chainctl image diff`:
 
 ```yaml
-    - uses: chainguard-dev/digestabot@43222237fd8a07dc41a06ca13e931c95ce2cedac # v1.2.2
+    - uses: chainguard-dev/digestabot@33d0b78e580aa0c83fe188eb3dfad6611b662479 # v1.3.2
       id: digestabot
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
@@ -397,7 +469,7 @@ patchesJSON6902:
 | `description-for-pr` | The description of the pull request.  | `Update images digests ...` |
 | `commit-message` | The message to use when committing changes.  | `Update images digests` |
 | `create-pr` | Create a PR or just keep the changes locally.  | `true` |
-| `use-gitsign` | Use gitsign to sign commits.  | `true` |
+| `use-gitsign` | Sign commits with gitsign (Sigstore keyless signing). Needs the `id-token: write` permission and access to the Sigstore public good instance (Fulcio, Rekor and TUF). Set to `false` to commit without gitsign, e.g. on restricted networks; a gitsign configuration left on the runner by another step is then ignored.  | `true` |
 | `registry-map` | Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/  | `` |
 | `min-age` | Only update to digests pushed at least this many days ago, so a cooldown policy on the registry does not block pulling them. Uses the tag history of the Chainguard registry, so it only applies to cgr.dev images (after `registry-map`); other images are skipped. Disabled when empty or 0.  | `` |
 | `stale-after` | Warn about image tags that were not rebuilt in this many days, as they may have reached their end of life and no longer receive patches. Uses the build time of the image (`org.opencontainers.image.created`); images without one are skipped. Disabled when empty or 0.  | `` |
