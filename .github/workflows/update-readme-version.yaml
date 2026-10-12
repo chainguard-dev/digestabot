@@ -1,0 +1,83 @@
+# Copyright 2026 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Update README version
+
+# Pins the digestabot references of the README and the docs to the latest
+# release, and opens a pull request with the change.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  update-readme-version:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+
+    permissions:
+      contents: write # create the branch and commit through the API
+      pull-requests: write # open the pull request
+
+    env:
+      BRANCH: update-readme-version
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Update the digestabot references
+        shell: bash
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: ./hack/update-readme-version.sh "${RELEASE_TAG}"
+
+      # The commit is created through the API so GitHub signs it, as the
+      # commit signing policy of the repository requires.
+      - name: Open a pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          mapfile -t files < <(git diff --name-only)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "The README already points to the latest release."
+            exit 0
+          fi
+
+          tag=$(grep -o -m 1 -E 'chainguard-dev/digestabot@[0-9a-f]{40} # v[^ ]+' README.md | cut -d ' ' -f 3)
+          base_sha=$(git rev-parse HEAD)
+
+          # (re)create the branch from the default branch
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}" -f sha="${base_sha}" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/heads/${BRANCH}" -f sha="${base_sha}" > /dev/null
+          fi
+
+          for file in "${files[@]}"; do
+            blob_sha=$(git rev-parse "HEAD:${file}")
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/${file}" \
+              -f message="docs: point ${file} to ${tag}" \
+              -f content="$(base64 -w 0 "${file}")" \
+              -f sha="${blob_sha}" \
+              -f branch="${BRANCH}" > /dev/null
+          done
+
+          if [ -z "$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --base "${BASE}" --head "${BRANCH}" \
+              --title "docs: point the README to ${tag}" \
+              --body "Pins the digestabot references of the README and the docs to the latest release, ${tag}."
+          fi
