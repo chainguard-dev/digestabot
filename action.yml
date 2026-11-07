@@ -54,7 +54,7 @@ inputs:
     description: 'Create a PR or just keep the changes locally.'
     default: true
   use-gitsign:
-    description: 'Use gitsign to sign commits.'
+    description: 'Sign commits with gitsign (Sigstore keyless signing). Needs the `id-token: write` permission and access to the Sigstore public good instance (Fulcio, Rekor and TUF). Set to `false` to commit without gitsign, e.g. on restricted networks; a gitsign configuration left on the runner by another step is then ignored.'
     default: 'true'
   registry-map:
     description: 'Comma-separated registry prefix mappings (proxy=upstream) for digest lookups. e.g. us-docker.pkg.dev/my-proj/cgr/=cgr.dev/'
@@ -572,8 +572,28 @@ runs:
               git('add', '--', file);
             }
 
+            // With use-gitsign disabled, don't let a gitsign configuration left
+            // on the runner (a separate setup-gitsign step, or a persistent
+            // self-hosted runner) sign the commit: it would reach out to
+            // Sigstore and warn or fail on restricted networks. Other signing
+            // configurations (GPG or SSH keys) are kept.
+            const gitConfig = (key) => {
+              try {
+                return git('config', '--get', key);
+              } catch (e) {
+                return '';
+              }
+            };
+            const commitArgs = [];
+            if (process.env.USE_GITSIGN.toLowerCase() !== 'true' &&
+                gitConfig('gpg.format') === 'x509' &&
+                /(^|[\/\\])gitsign(\.exe)?$/.test(gitConfig('gpg.x509.program'))) {
+              console.log('use-gitsign is false: not signing the commit with the gitsign configured on the runner.');
+              commitArgs.push('-c', 'commit.gpgsign=false');
+            }
+
             // Commit with proper author/committer
-            const commitArgs = ['commit', '-m', process.env.COMMIT_MESSAGE];
+            commitArgs.push('commit', '-m', process.env.COMMIT_MESSAGE);
             if (process.env.SIGNOFF === 'true') {
               commitArgs.push('--signoff');
             }
