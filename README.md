@@ -96,7 +96,7 @@ When pulling images through a registry proxy (e.g. GCP Artifact Registry), the p
 
 ### Cooldown
 
-When the registry enforces a [cooldown policy](https://edu.chainguard.dev/chainguard/chainguard-repository/container-policies/#cooldown),
+When the registry enforces a [cooldown policy](https://www.chainguard.dev/docs/chainguard/chainguard-repository/container-policies#cooldown),
 digests newer than the cooldown period can't be pulled. Chainguard images are
 rebuilt often, so the latest digest of a tag is usually still in that window.
 
@@ -199,7 +199,7 @@ updates any other image without verification:
             issuer: https://token.actions.githubusercontent.com
 ```
 
-See [Verifying Chainguard Containers](https://edu.chainguard.dev/chainguard/chainguard-images/how-to-use/verifying-chainguard-images-and-metadata-signatures-with-cosign/)
+See [Verifying Chainguard Containers](https://www.chainguard.dev/docs/chainguard/containers/security-and-compliance/verifying-chainguard-images-and-metadata-signatures-with-cosign)
 for the identities that sign the images of your organization.
 
 #### Policy file
